@@ -3,7 +3,7 @@
  * Keyframe **Play** and **+ Record** share one segmented control in the Animate row (preview vs play-and-capture);
  * Video keeps **Record** only. Tooltips use Radix (150ms) on grouped icon+label rows via AppTooltip.
  */
-import { COPY_SCALES, EXPORT_SCALES } from '../constants';
+import { COPY_SCALES } from '../constants';
 import { supportsMP4 } from '../hooks/useCanvasRecorder';
 import { Icon } from './ui/Icon';
 import { IconButton } from './ui/IconButton';
@@ -20,12 +20,8 @@ export function CaptureToolbar({
   copyDefaults,
   onCopy,
   copyFeedback,
-  showExport = false,
-  exportScale,
-  setExportScale,
-  exportDefaults,
-  onExport,
-  exportFeedback,
+  onDownload,
+  downloadFeedback,
   recordFormat,
   setRecordFormat,
   isRecording,
@@ -45,6 +41,9 @@ export function CaptureToolbar({
       ? `${recordingReason === 'auto' ? 'Auto-recording — ' : ''}Stop and download ${recordFormat.toUpperCase()}`
       : `Record canvas as ${recordFormat.toUpperCase()}`;
 
+  const imageFeedback = copyFeedback || downloadFeedback;
+  const imageFeedbackOk = copyFeedback === 'Copied!' || downloadFeedback === 'Exported!';
+
   return (
     <div
       className="shrink-0 border-t border-border-subtle bg-surface-elevated px-3 py-2"
@@ -54,8 +53,8 @@ export function CaptureToolbar({
       <div className="flex min-h-0 flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className={`${typeLabel} shrink-0 text-text-muted`}>Image</span>
-          <AppTooltip content="Resolution multiplier for clipboard copy (PNG or WebP)">
-            <div className="inline-flex items-center gap-1">
+          <div className="inline-flex flex-wrap items-center gap-2">
+            <AppTooltip content="Resolution multiplier for copy and download">
               <SegmentedControl>
                 <div className="flex h-full">
                   {COPY_SCALES.map((s) => (
@@ -63,13 +62,17 @@ export function CaptureToolbar({
                       key={s}
                       active={copyScale === s}
                       aria-pressed={copyScale === s}
-                      aria-label={`Copy resolution: ${s}×`}
+                      aria-label={`Image resolution: ${s}×`}
                       onClick={() => setCopyScale(s)}
                     >
                       {s}×
                     </SegmentedControlButton>
                   ))}
                 </div>
+              </SegmentedControl>
+            </AppTooltip>
+            <AppTooltip content="PNG or WebP for copy and download">
+              <SegmentedControl>
                 <div className="flex h-full">
                   {['png', 'webp'].map((fmt) => (
                     <SegmentedControlButton
@@ -77,7 +80,7 @@ export function CaptureToolbar({
                       format
                       active={copyFormat === fmt}
                       aria-pressed={copyFormat === fmt}
-                      aria-label={`Clipboard format: ${fmt}`}
+                      aria-label={`Image type: ${fmt}`}
                       onClick={() => setCopyFormat(fmt)}
                     >
                       {fmt}
@@ -85,100 +88,53 @@ export function CaptureToolbar({
                   ))}
                 </div>
               </SegmentedControl>
-            </div>
-          </AppTooltip>
+            </AppTooltip>
+          </div>
           <AppTooltip content={`Copy canvas at ${copyScale}× as ${copyFormat.toUpperCase()}`}>
-            <span className="inline-flex cursor-default items-center gap-1">
-              <IconButton
-                size="sm"
-                aria-label={`Copy ${copyFormat.toUpperCase()}`}
-                onClick={onCopy}
-              >
-                <Icon name="content_copy" className={iconSm} />
-              </IconButton>
-              <span className={`${typeLabel} hidden sm:inline`}>Copy</span>
-            </span>
+            <IconButton
+              size="sm"
+              aria-label={`Copy ${copyFormat.toUpperCase()}`}
+              onClick={onCopy}
+            >
+              <Icon name="content_copy" className={iconSm} />
+            </IconButton>
           </AppTooltip>
-          {(copyScale !== copyDefaults.copyScale || copyFormat !== copyDefaults.copyFormat) && (
-            <AppTooltip content="Reset copy scale and format to defaults">
-              <span className="inline-flex cursor-default items-center gap-1">
-                <IconButton
-                  size="resetSm"
-                  aria-label="Reset copy scale and format to defaults"
-                  onClick={() => {
-                    setCopyScale(copyDefaults.copyScale);
-                    setCopyFormat(copyDefaults.copyFormat);
-                  }}
-                >
-                  <Icon name="restart_alt" className={iconResetGlyph} />
-                </IconButton>
-                <span className={`${typeLabel} hidden md:inline`}>Reset copy</span>
-              </span>
+          {onDownload && (
+            <AppTooltip content={`Download ${copyFormat.toUpperCase()} at ${copyScale}×`}>
+              <IconButton size="sm" aria-label={`Download ${copyFormat.toUpperCase()}`} onClick={onDownload}>
+                <Icon name="file_download" className={iconSm} />
+              </IconButton>
             </AppTooltip>
           )}
-          {(showConfigExport || showEmbedExport) && (
+          {(copyScale !== copyDefaults.copyScale || copyFormat !== copyDefaults.copyFormat) && (
+            <AppTooltip content="Reset resolution and type to defaults">
+              <IconButton
+                size="resetSm"
+                aria-label="Reset resolution and type to defaults"
+                onClick={() => {
+                  setCopyScale(copyDefaults.copyScale);
+                  setCopyFormat(copyDefaults.copyFormat);
+                }}
+              >
+                <Icon name="restart_alt" className={iconResetGlyph} />
+              </IconButton>
+            </AppTooltip>
+          )}
+          {imageFeedback && (
+            <span className={`shrink-0 text-xs ${imageFeedbackOk ? 'text-accent' : 'text-error'}`} role="status">
+              {imageFeedback}
+            </span>
+          )}
+        </div>
+
+        {(showConfigExport || showEmbedExport) && (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 border-border-subtle sm:border-l sm:pl-3">
             <ExportMenu
               showConfigExport={showConfigExport}
               onOpenConfigExport={onOpenConfigExport}
               showEmbedExport={showEmbedExport}
               onOpenEmbedExport={onOpenEmbedExport}
             />
-          )}
-          {copyFeedback && (
-            <span className={`shrink-0 text-xs ${copyFeedback === 'Copied!' ? 'text-accent' : 'text-error'}`} role="status">
-              {copyFeedback}
-            </span>
-          )}
-        </div>
-
-        {showExport && exportScale != null && setExportScale && exportDefaults && onExport && (
-          <div className="flex min-w-0 flex-wrap items-center gap-2 border-border-subtle sm:border-l sm:pl-3">
-            <span className={`${typeLabel} shrink-0 text-text-muted`}>PNG</span>
-            <AppTooltip content="Scale for downloaded PNG file">
-              <div className="inline-flex items-center gap-1">
-                <SegmentedControl>
-                  <div className="flex h-full">
-                    {EXPORT_SCALES.map((s) => (
-                      <SegmentedControlButton
-                        key={s}
-                        active={exportScale === s}
-                        aria-pressed={exportScale === s}
-                        aria-label={`Export at ${s}×`}
-                        onClick={() => setExportScale(s)}
-                      >
-                        {s}×
-                      </SegmentedControlButton>
-                    ))}
-                  </div>
-                </SegmentedControl>
-              </div>
-            </AppTooltip>
-            <AppTooltip content={`Download PNG at ${exportScale}×`}>
-              <span className="inline-flex cursor-default items-center gap-1">
-                <IconButton size="sm" aria-label="Export PNG" onClick={onExport}>
-                  <Icon name="file_download" className={iconSm} />
-                </IconButton>
-                <span className={`${typeLabel} hidden sm:inline`}>Download</span>
-              </span>
-            </AppTooltip>
-            {exportScale !== exportDefaults.exportScale && (
-              <AppTooltip content="Reset export scale to default">
-                <span className="inline-flex cursor-default items-center gap-1">
-                  <IconButton
-                    size="resetSm"
-                    aria-label="Reset export scale to default"
-                    onClick={() => setExportScale(exportDefaults.exportScale)}
-                  >
-                    <Icon name="restart_alt" className={iconResetGlyph} />
-                  </IconButton>
-                </span>
-              </AppTooltip>
-            )}
-            {exportFeedback && (
-              <span className={`shrink-0 text-xs ${exportFeedback === 'Exported!' ? 'text-accent' : 'text-error'}`} role="status">
-                {exportFeedback}
-              </span>
-            )}
           </div>
         )}
 

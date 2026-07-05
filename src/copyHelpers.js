@@ -1,7 +1,7 @@
 /**
  * Copy-to-clipboard helpers for Shader Sandbox (v1–v4).
  *
- * Copy resolution (1×, 2×, 4×, 8× from COPY_SCALES) applies to all views: v1 (weaving), v2 (imageRects),
+ * Copy resolution (1×, 2×, 4×, 8×, 12× from COPY_SCALES) applies to all views: v1 (weaving), v2 (imageRects),
  * v3 (weavingHalftone), v4 (imageRectsHalftone). v1/v3/v4 use App.jsx handleCopy + getCopyCanvas(view, …);
  * v2 uses AppV2’s own copy toolbar and copyScale when embedded or standalone.
  *
