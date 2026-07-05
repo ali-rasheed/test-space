@@ -9,7 +9,7 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import { buildPatternTexture, PATTERNS } from '../patterns';
 import { buildPatternMetaTexture, normalizeTileArtRamp } from '../patterns/tileArtRamp';
 import { EXPORT_MAX_DIMENSION } from '../constants';
-import { IMAGE_RECTS_URL_DEFAULTS } from '../urlDefaults';
+import { IMAGE_RECTS_URL_DEFAULTS, WEAVING_URL_DEFAULTS } from '../urlDefaults';
 
 const QUAD_POSITIONS = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
 
@@ -93,7 +93,7 @@ function hexToRgb01(hex, fallback = [0.95, 0.95, 0.95]) {
  * mediaTextureKind: staticImage = one upload after load; video = HTMLVideoElement, upload while playing;
  * gif = HTMLImageElement (animated GIF), upload every frame so frames advance.
  */
-export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, rectShade, shadeFrom, patternWarpShade, patternWeftShade, patternIndex, patterns, rectRadius, rectAspect, rectRatio, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, nonStitchShowsBg, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, onFpsChange, onImageSize, onMediaReady, onCaptureReady, mediaTextureKind = 'staticImage') {
+export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, rectShade, shadeFrom, patternWarpShade, patternWeftShade, patternIndex, patterns, rectRadius, rectAspect, rectRatio, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, nonStitchShowsBg, contentPadding, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, onFpsChange, onImageSize, onMediaReady, onCaptureReady, mediaTextureKind = 'staticImage') {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const onFpsChangeRef = useRef(onFpsChange);
@@ -213,6 +213,7 @@ export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, 
       gl.uniform1f(uniformLocs.cellGeometryMode, cellGeometryMode ?? 0);
       gl.uniform1f(uniformLocs.stitchLumaMax, stitchLumaMax ?? 0.42);
       gl.uniform1f(uniformLocs.nonStitchShowsBg, nonStitchShowsBg ?? 0);
+      gl.uniform1f(uniformLocs.contentPadding, contentPadding ?? 0);
       gl.uniform1f(uniformLocs.stitchRevealMode, stitchRevealMode ?? 0);
       gl.uniform1f(uniformLocs.stitchRevealProgress, stitchRevealProgress ?? 1);
       gl.uniform1f(uniformLocs.stitchRevealSeed, stitchRevealSeed ?? 0);
@@ -243,6 +244,32 @@ export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, 
         }
       }
       if (uniformLocs.patternMetaWidth != null) gl.uniform1f(uniformLocs.patternMetaWidth, patternMetaWidth);
+      const cwDef = WEAVING_URL_DEFAULTS;
+      const uac = useAllColorways ?? cwDef.useAllColorways;
+      const cwm = colorwayIncludeMask ?? cwDef.colorwayIncludeMask;
+      if (uniformLocs.useAllColorways != null) gl.uniform1f(uniformLocs.useAllColorways, uac ? 1 : 0);
+      if (uniformLocs.colorwaySeed != null) gl.uniform1f(uniformLocs.colorwaySeed, colorwaySeed ?? cwDef.colorwaySeed);
+      if (uniformLocs.colorwayNoiseScale != null) gl.uniform1f(uniformLocs.colorwayNoiseScale, colorwayNoiseScale ?? cwDef.colorwayNoiseScale);
+      if (uniformLocs.colorwayNoiseMode != null) gl.uniform1f(uniformLocs.colorwayNoiseMode, colorwayNoiseMode ?? cwDef.colorwayNoiseMode);
+      if (uniformLocs.colorwayNoiseOctaves != null) gl.uniform1f(uniformLocs.colorwayNoiseOctaves, colorwayNoiseOctaves ?? cwDef.colorwayNoiseOctaves);
+      if (uniformLocs.colorwayNoisePersistence != null) gl.uniform1f(uniformLocs.colorwayNoisePersistence, colorwayNoisePersistence ?? cwDef.colorwayNoisePersistence);
+      if (uniformLocs.colorwayNoiseLacunarity != null) gl.uniform1f(uniformLocs.colorwayNoiseLacunarity, colorwayNoiseLacunarity ?? cwDef.colorwayNoiseLacunarity);
+      if (uniformLocs.colorwayNoiseBias != null) gl.uniform1f(uniformLocs.colorwayNoiseBias, colorwayNoiseBias ?? cwDef.colorwayNoiseBias);
+      if (uniformLocs.colorwayNoiseX != null) gl.uniform1f(uniformLocs.colorwayNoiseX, colorwayNoiseX ?? cwDef.colorwayNoiseX);
+      if (uniformLocs.colorwayBleedAnisotropy != null) gl.uniform1f(uniformLocs.colorwayBleedAnisotropy, colorwayBleedAnisotropy ?? cwDef.colorwayBleedAnisotropy);
+      if (uniformLocs.colorwayBleedRotation != null) gl.uniform1f(uniformLocs.colorwayBleedRotation, colorwayBleedRotation ?? cwDef.colorwayBleedRotation);
+      if (uniformLocs.colorwayBleedCrossFiber != null) gl.uniform1f(uniformLocs.colorwayBleedCrossFiber, colorwayBleedCrossFiber ?? cwDef.colorwayBleedCrossFiber);
+      if (uniformLocs.colorwayBleedDraftCoupled != null) gl.uniform1f(uniformLocs.colorwayBleedDraftCoupled, (colorwayBleedDraftCoupled ?? cwDef.colorwayBleedDraftCoupled) ? 1 : 0);
+      if (uniformLocs.colorwayInclude0123 != null) {
+        gl.uniform4f(
+          uniformLocs.colorwayInclude0123,
+          cwm & 1 ? 1 : 0,
+          cwm & 2 ? 1 : 0,
+          cwm & 4 ? 1 : 0,
+          cwm & 8 ? 1 : 0,
+        );
+      }
+      if (uniformLocs.colorwayInclude4 != null) gl.uniform1f(uniformLocs.colorwayInclude4, cwm & 16 ? 1 : 0);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -297,6 +324,7 @@ export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, 
         cellGeometryMode: gl.getUniformLocation(program, 'u_cellGeometryMode'),
         stitchLumaMax: gl.getUniformLocation(program, 'u_stitchLumaMax'),
         nonStitchShowsBg: gl.getUniformLocation(program, 'u_nonStitchShowsBg'),
+        contentPadding: gl.getUniformLocation(program, 'u_contentPadding'),
         stitchRevealMode: gl.getUniformLocation(program, 'u_stitchRevealMode'),
         stitchRevealProgress: gl.getUniformLocation(program, 'u_stitchRevealProgress'),
         stitchRevealSeed: gl.getUniformLocation(program, 'u_stitchRevealSeed'),
@@ -307,6 +335,21 @@ export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, 
         stitchRevealBleedRotation: gl.getUniformLocation(program, 'u_stitchRevealBleedRotation'),
         stitchRevealBleedCrossFiber: gl.getUniformLocation(program, 'u_stitchRevealBleedCrossFiber'),
         stitchRevealBleedDraftCoupled: gl.getUniformLocation(program, 'u_stitchRevealBleedDraftCoupled'),
+        useAllColorways: gl.getUniformLocation(program, 'u_useAllColorways'),
+        colorwaySeed: gl.getUniformLocation(program, 'u_colorwaySeed'),
+        colorwayNoiseScale: gl.getUniformLocation(program, 'u_colorwayNoiseScale'),
+        colorwayNoiseMode: gl.getUniformLocation(program, 'u_colorwayNoiseMode'),
+        colorwayNoiseOctaves: gl.getUniformLocation(program, 'u_colorwayNoiseOctaves'),
+        colorwayNoisePersistence: gl.getUniformLocation(program, 'u_colorwayNoisePersistence'),
+        colorwayNoiseLacunarity: gl.getUniformLocation(program, 'u_colorwayNoiseLacunarity'),
+        colorwayNoiseBias: gl.getUniformLocation(program, 'u_colorwayNoiseBias'),
+        colorwayNoiseX: gl.getUniformLocation(program, 'u_colorwayNoiseX'),
+        colorwayBleedAnisotropy: gl.getUniformLocation(program, 'u_colorwayBleedAnisotropy'),
+        colorwayBleedRotation: gl.getUniformLocation(program, 'u_colorwayBleedRotation'),
+        colorwayBleedCrossFiber: gl.getUniformLocation(program, 'u_colorwayBleedCrossFiber'),
+        colorwayBleedDraftCoupled: gl.getUniformLocation(program, 'u_colorwayBleedDraftCoupled'),
+        colorwayInclude0123: gl.getUniformLocation(program, 'u_colorwayInclude0123'),
+        colorwayInclude4: gl.getUniformLocation(program, 'u_colorwayInclude4'),
         tileArtLevels: gl.getUniformLocation(program, 'u_tileArtLevels'),
         tileArtThreshold: gl.getUniformLocation(program, 'u_tileArtThreshold'),
         tileArtDither: gl.getUniformLocation(program, 'u_tileArtDither'),
@@ -572,7 +615,7 @@ export function useImageRectsSandbox(vertexSource, fragmentSource, imageSource, 
       if (patternMetaTexture) gl.deleteTexture(patternMetaTexture);
       if (program) gl.deleteProgram(program);
     };
-  }, [vertexSource, fragmentSource, imageSource, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, rectShade, shadeFrom, patternWarpShade, patternWeftShade, patternIndex, patterns, rectRadius, rectAspect, rectRatio, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, nonStitchShowsBg, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, mediaTextureKind]);
+  }, [vertexSource, fragmentSource, imageSource, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, rectShade, shadeFrom, patternWarpShade, patternWeftShade, patternIndex, patterns, rectRadius, rectAspect, rectRatio, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, nonStitchShowsBg, contentPadding, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, mediaTextureKind]);
 
   useEffect(() => {
     const cleanup = run();

@@ -24,7 +24,6 @@ export const WEAVING_URL_DEFAULTS = {
   weaveEnsMarkVisible: true,
   copyFormat: 'png',
   copyScale: 2,
-  exportScale: 6,
   useAllColorways: true,
   colorwaySeed: 78.2,
   colorwayNoiseScale: 0.005,
@@ -125,6 +124,8 @@ export const IMAGE_RECTS_URL_DEFAULTS = {
   mosaicBgGaps: false,
   /** Mosaic canvas: 'fit' = contain in stage, 'fill' = grow to fill main area. */
   patternFit: 'fit',
+  /** Outer inset per edge (0–0.45): background band; mosaic samples inner rect only (URL cpad). */
+  contentPadding: 0,
   stageTranslateX: 0,
   /** 0 = off, 1 = noise (FBM), 2 = dye-bleed stitch-in from blank. */
   stitchRevealMode: 0,

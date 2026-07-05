@@ -1,10 +1,13 @@
 /**
  * ImageRectsHalftoneStage — Mosaic/Image rects → CMYK halftone (Print mode).
- * Offscreen capture at image resolution; HalftoneCmyk fills the stage viewport.
+ * Offscreen capture at image resolution; HalftoneCmyk is sized to the same image-aspect
+ * viewport box as ImageRectsCanvas (Fit/Fill + rect inset padding baked into capture).
  */
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { HalftoneCmyk } from '@paper-design/shaders-react';
 import { ImageRectsCapture } from './ImageRectsCapture';
+import { useAspectViewportBox } from '../hooks/useAspectViewportBox';
+import { WEAVING_URL_DEFAULTS } from '../urlDefaults';
 
 const CAPTURE_AFTER_MEDIA_MS = 80;
 const CAPTURE_MAX_ATTEMPTS = 180;
@@ -63,6 +66,7 @@ export function ImageRectsHalftoneStage({
   cellGeometryMode,
   stitchLumaMax,
   nonStitchShowsBg = false,
+  contentPadding = 0,
   stitchRevealMode = 0,
   stitchRevealProgress = 1,
   stitchRevealSeed = 0,
@@ -81,6 +85,20 @@ export function ImageRectsHalftoneStage({
   tileArtUniformGrid = 1,
   tileArtDensity = 0,
   tileArtRamp,
+  useAllColorways = WEAVING_URL_DEFAULTS.useAllColorways,
+  colorwaySeed = WEAVING_URL_DEFAULTS.colorwaySeed,
+  colorwayNoiseScale = WEAVING_URL_DEFAULTS.colorwayNoiseScale,
+  colorwayNoiseMode = WEAVING_URL_DEFAULTS.colorwayNoiseMode,
+  colorwayNoiseOctaves = WEAVING_URL_DEFAULTS.colorwayNoiseOctaves,
+  colorwayNoisePersistence = WEAVING_URL_DEFAULTS.colorwayNoisePersistence,
+  colorwayNoiseLacunarity = WEAVING_URL_DEFAULTS.colorwayNoiseLacunarity,
+  colorwayNoiseBias = WEAVING_URL_DEFAULTS.colorwayNoiseBias,
+  colorwayNoiseX = WEAVING_URL_DEFAULTS.colorwayNoiseX,
+  colorwayBleedAnisotropy = WEAVING_URL_DEFAULTS.colorwayBleedAnisotropy,
+  colorwayBleedRotation = WEAVING_URL_DEFAULTS.colorwayBleedRotation,
+  colorwayBleedCrossFiber = WEAVING_URL_DEFAULTS.colorwayBleedCrossFiber,
+  colorwayBleedDraftCoupled = WEAVING_URL_DEFAULTS.colorwayBleedDraftCoupled,
+  colorwayIncludeMask = WEAVING_URL_DEFAULTS.colorwayIncludeMask,
   patternFit = 'fit',
   size,
   softness,
@@ -98,17 +116,24 @@ export function ImageRectsHalftoneStage({
   halftoneContainerRef,
   halftoneCanvasRef,
 }) {
-  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const pendingCaptureSizeRef = useRef({ w: 1280, h: 720 });
   const captureSizeRef = useRef({ w: 1280, h: 720 });
   const mediaReadyRef = useRef(false);
   const [captureError, setCaptureError] = useState('');
-  const [stageDimensions, setStageDimensions] = useState({ width: 1280, height: 720 });
+  const [imageSize, setImageSize] = useState(null);
   const [captureDimensions, setCaptureDimensions] = useState({ width: 1280, height: 720 });
-  const { width: stageW, height: stageH } = stageDimensions;
   const { width: captureW, height: captureH } = captureDimensions;
   const [capturedDataUrl, setCapturedDataUrl] = useState('');
+
+  const viewportMode = patternFit === 'fill' ? 'cover' : 'contain';
+  const aspectRatio =
+    imageSize && imageSize.width > 0 && imageSize.height > 0
+      ? imageSize.width / imageSize.height
+      : 1;
+  const { outerRef, width: boxW, height: boxH } = useAspectViewportBox(viewportMode, aspectRatio);
+  const halftoneW = Math.max(1, Math.round(boxW));
+  const halftoneH = Math.max(1, Math.round(boxH));
 
   const MAX_CAPTURE = 2048;
   captureSizeRef.current = { w: captureW, h: captureH };
@@ -137,6 +162,7 @@ export function ImageRectsHalftoneStage({
 
   const handleImageSize = useCallback((w, h) => {
     if (!w || !h) return;
+    setImageSize({ width: w, height: h });
     const scale = Math.min(1, MAX_CAPTURE / Math.max(w, h));
     const cw = Math.round(w * scale);
     const ch = Math.round(h * scale);
@@ -168,6 +194,7 @@ export function ImageRectsHalftoneStage({
     mediaReadyRef.current = false;
     setCapturedDataUrl('');
     setCaptureError('');
+    setImageSize(null);
   }, [imageSource]);
 
   useEffect(() => scheduleCapture(), [
@@ -196,6 +223,7 @@ export function ImageRectsHalftoneStage({
     cellGeometryMode,
     stitchLumaMax,
     nonStitchShowsBg,
+    contentPadding,
     stitchRevealMode,
     stitchRevealProgress,
     stitchRevealSeed,
@@ -242,27 +270,6 @@ export function ImageRectsHalftoneStage({
     };
   }, [capturedDataUrl, halftoneContainerRef, halftoneCanvasRef]);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const syncStage = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (w && h) setStageDimensions({ width: w, height: h });
-    };
-    const ro = new ResizeObserver(syncStage);
-    ro.observe(el);
-    syncStage();
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!imageSource) {
-      setCaptureDimensions(stageDimensions);
-      pendingCaptureSizeRef.current = { w: stageDimensions.width, h: stageDimensions.height };
-    }
-  }, [imageSource, stageDimensions]);
-
   const captureProps = {
     imageSource,
     mediaTextureKind,
@@ -291,6 +298,7 @@ export function ImageRectsHalftoneStage({
     cellGeometryMode,
     stitchLumaMax,
     nonStitchShowsBg,
+    contentPadding,
     stitchRevealMode,
     stitchRevealProgress,
     stitchRevealSeed,
@@ -309,10 +317,27 @@ export function ImageRectsHalftoneStage({
     tileArtUniformGrid,
     tileArtDensity,
     tileArtRamp,
+    useAllColorways,
+    colorwaySeed,
+    colorwayNoiseScale,
+    colorwayNoiseMode,
+    colorwayNoiseOctaves,
+    colorwayNoisePersistence,
+    colorwayNoiseLacunarity,
+    colorwayNoiseBias,
+    colorwayNoiseX,
+    colorwayBleedAnisotropy,
+    colorwayBleedRotation,
+    colorwayBleedCrossFiber,
+    colorwayBleedDraftCoupled,
+    colorwayIncludeMask,
   };
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 flex-1 w-full">
+    <div
+      ref={outerRef}
+      className="relative flex h-full min-h-0 min-w-0 w-full flex-1 self-stretch items-center justify-center overflow-hidden"
+    >
       <div
         aria-hidden
         className="absolute overflow-hidden"
@@ -330,11 +355,15 @@ export function ImageRectsHalftoneStage({
         />
       </div>
 
-      <div ref={halftoneContainerRef} className="relative min-h-0 flex-1 bg-surface-secondary size-full">
-        {capturedDataUrl ? (
+      <div
+        ref={halftoneContainerRef}
+        className="relative flex shrink-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface-secondary"
+        style={{ width: boxW, height: boxH }}
+      >
+        {capturedDataUrl && boxW > 0 && boxH > 0 ? (
           <HalftoneCmyk
-            width={stageW}
-            height={stageH}
+            width={halftoneW}
+            height={halftoneH}
             image={capturedDataUrl}
             colorBack={colorBack}
             colorC={colorC}
@@ -357,7 +386,7 @@ export function ImageRectsHalftoneStage({
             grainMixer={0}
             grainOverlay={0}
             grainSize={0.5}
-            fit={patternFit === 'fill' ? 'cover' : 'contain'}
+            fit="cover"
             webGlContextAttributes={WEB_GL_ATTRS}
           />
         ) : (
