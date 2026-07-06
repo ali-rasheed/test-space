@@ -72,9 +72,12 @@ export const WEAVING_URL_DEFAULTS = {
   weaveStitchRevealBleedDraftCoupled: 0,
   /** When true, stitch-in progress is manual / keyframe A↔B; when false, timed duration ramp (default). URL `srkm`. */
   weaveStitchRevealKeyframeDrive: false,
+  /** Diagonal load-in on Weave (0 = wave start, 1 = fully revealed). */
+  diagonalRevealProgress: 1,
 };
 
 export const IMAGE_RECTS_URL_DEFAULTS = {
+  menuHidden: false,
   gridSize: 32,
   palette: 0,
   bgShade: 2,

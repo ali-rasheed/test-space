@@ -17,6 +17,7 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import { EXPORT_MAX_DIMENSION, RECT_ASPECT_DEFAULT } from '../constants';
 import { buildPatternTexture, PATTERNS } from '../patterns';
 import { WEAVING_URL_DEFAULTS } from '../urlDefaults';
+import { diagonalRevealDurationSec } from '../weaveDiagonalReveal';
 import ensMarkUrl from '../assets/ens-mark.png?url';
 import { ENS_MARK_TEX_ASPECT } from '../assets/ensMarkMeta.js';
 
@@ -50,7 +51,7 @@ function getUniformLocs(gl, program) {
     weftStartPos: gl.getUniformLocation(program, 'u_weftStartPos'),
     weftEndPos: gl.getUniformLocation(program, 'u_weftEndPos'),
     gradSteps: gl.getUniformLocation(program, 'u_gradSteps'),
-    revealStartTime: gl.getUniformLocation(program, 'u_revealStartTime'),
+    revealProgress: gl.getUniformLocation(program, 'u_revealProgress'),
     rectAspect: gl.getUniformLocation(program, 'u_rectAspect'),
     cornerRadius: gl.getUniformLocation(program, 'u_cornerRadius'),
     shimmer: gl.getUniformLocation(program, 'u_shimmer'),
@@ -148,7 +149,7 @@ function getPaletteColor(paletteIndex, shadeIndex) {
   return PALETTE_RGBA[p][s];
 }
 
-export function useShaderSandbox(vertexSource, fragmentSource, patternIndex, palette, bgShade, warpShade, weftShade, gridSize, warpGradient, weftGradient, warpGradientEnabled, weftGradientEnabled, gradSteps, rectAspect, cornerRadius, shimmer, shimmerSpeed, shimmerWidth, shimmerIntensity, shimmerPosition, shimmerRotation, shimmerNoise, shimmerNoiseSeed, shimmerNoiseMin, shimmerNoiseMax, shimmerBlendMode, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, stageTranslateX, weaveEnsMarkVisible, shimmerPlaying, shimmerPausedAtTime, shimmerPhase, onShimmerTime, patterns, onFpsChange, onCaptureReady) {
+export function useShaderSandbox(vertexSource, fragmentSource, patternIndex, palette, bgShade, warpShade, weftShade, gridSize, warpGradient, weftGradient, warpGradientEnabled, weftGradientEnabled, gradSteps, rectAspect, cornerRadius, shimmer, shimmerSpeed, shimmerWidth, shimmerIntensity, shimmerPosition, shimmerRotation, shimmerNoise, shimmerNoiseSeed, shimmerNoiseMin, shimmerNoiseMax, shimmerBlendMode, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, stageTranslateX, weaveEnsMarkVisible, diagonalRevealProgress, shimmerPlaying, shimmerPausedAtTime, shimmerPhase, onShimmerTime, patterns, onFpsChange, onCaptureReady) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const vertexSourceRef = useRef(vertexSource);
@@ -277,6 +278,10 @@ export function useShaderSandbox(vertexSource, fragmentSource, patternIndex, pal
   stageTranslateXRef.current = Number(stageTranslateX) || 0;
   const weaveEnsMarkVisibleRef = useRef(weaveEnsMarkVisible !== false);
   weaveEnsMarkVisibleRef.current = weaveEnsMarkVisible !== false;
+  const diagonalRevealProgressRef = useRef(diagonalRevealProgress);
+  const diagonalRevealExternalRef = useRef(diagonalRevealProgress != null);
+  diagonalRevealProgressRef.current = diagonalRevealProgress ?? diagonalRevealProgressRef.current;
+  diagonalRevealExternalRef.current = diagonalRevealProgress != null;
   shimmerPlayingRef.current = shimmerPlaying ?? true;
   shimmerPausedAtTimeRef.current = shimmerPausedAtTime ?? 0;
   shimmerPhaseRef.current = shimmerPhase ?? 0;
@@ -403,7 +408,17 @@ export function useShaderSandbox(vertexSource, fragmentSource, patternIndex, pal
       gl.uniform1f(uniformLocs.weftStartPos, Math.min(wfr[0], wfr[1]) / 100);
       gl.uniform1f(uniformLocs.weftEndPos, Math.max(wfr[0], wfr[1]) / 100);
       gl.uniform1f(uniformLocs.gradSteps, gradStepsRef.current);
-      gl.uniform1f(uniformLocs.revealStartTime, revealStartTime);
+      let revealProgress;
+      if (diagonalRevealExternalRef.current) {
+        revealProgress = Math.max(0, Math.min(1, Number(diagonalRevealProgressRef.current) || 0));
+      } else {
+        const gs = Math.max(2, gridSizeRef.current ?? 32);
+        const ar = canvas.width / Math.max(canvas.height, 1);
+        const dur = diagonalRevealDurationSec(gs, ar);
+        const elapsed = time - revealStartTime;
+        revealProgress = dur > 0 ? Math.min(1, elapsed / dur) : 1;
+      }
+      gl.uniform1f(uniformLocs.revealProgress, revealProgress);
       gl.uniform1f(uniformLocs.rectAspect, rectAspectRef.current);
       gl.uniform1f(uniformLocs.cornerRadius, cornerRadiusRef.current);
       if (uniformLocs.shimmer != null) gl.uniform1f(uniformLocs.shimmer, shimmerRef.current);

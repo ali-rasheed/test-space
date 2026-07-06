@@ -23,6 +23,7 @@ import {
   downloadBlob,
   imageExportFilename,
 } from './canvasImageExport';
+import { diagonalRevealDurationSec } from './weaveDiagonalReveal';
 
 /** Copy/export/record: weaving + halftone uses halftone canvas (legacy view name `weavingHalftone`). */
 function copyExportView(view, weaveHalftoneOn) {
@@ -664,6 +665,9 @@ export default function App() {
   /** False = timed ramp (`srd`); true = slider + keyframe A/B (`srkm`). */
   const [weaveStitchRevealKeyframeDrive, setWeaveStitchRevealKeyframeDrive] = useState(WEAVING_URL_DEFAULTS.weaveStitchRevealKeyframeDrive);
   const [weaveStitchRevealPlayToken, setWeaveStitchRevealPlayToken] = useState(0);
+  /** Diagonal load-in wave (0 = start, 1 = fully woven); auto-plays on load / pattern change. */
+  const [diagonalRevealProgress, setDiagonalRevealProgress] = useState(0);
+  const diagonalRevealAnimRafRef = useRef(0);
   /** Copy format: 'png' or 'webp'; copyScale: 1, 2, 4, 8, or 12× display size (copy + download). */
   const [copyFormat, setCopyFormat] = useState(WEAVING_URL_DEFAULTS.copyFormat);
   const [copyScale, setCopyScale] = useState(WEAVING_URL_DEFAULTS.copyScale);
@@ -1367,6 +1371,42 @@ export default function App() {
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, [weaveStitchRevealMode, weaveStitchRevealPlayToken, pattern, weaveStitchRevealDurationSec, weaveStitchRevealKeyframeDrive]);
+
+  /** Diagonal weave load-in: same timing as before, now scrubbable via sidebar slider. */
+  useEffect(() => {
+    if (view !== 'weaving') return undefined;
+    if (diagonalRevealAnimRafRef.current) {
+      cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+      diagonalRevealAnimRafRef.current = 0;
+    }
+    setDiagonalRevealProgress(0);
+    const durationMs = diagonalRevealDurationSec(gridSize, canvasAspect) * 1000;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      setDiagonalRevealProgress(t);
+      if (t < 1) {
+        diagonalRevealAnimRafRef.current = requestAnimationFrame(tick);
+      } else {
+        diagonalRevealAnimRafRef.current = 0;
+      }
+    };
+    diagonalRevealAnimRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (diagonalRevealAnimRafRef.current) {
+        cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+        diagonalRevealAnimRafRef.current = 0;
+      }
+    };
+  }, [view, pattern, gridSize, canvasAspect]);
+
+  const handleDiagonalRevealChange = useCallback((v) => {
+    if (diagonalRevealAnimRafRef.current) {
+      cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+      diagonalRevealAnimRafRef.current = 0;
+    }
+    setDiagonalRevealProgress(v);
+  }, []);
 
   useEffect(() => {
     if (!weaveKeyframePlaying) weaveKeyframeStitchOverrideRef.current = false;
@@ -2238,6 +2278,32 @@ export default function App() {
                 </div>
                 {view === 'weaving' && (
                 <div className={sidebarGroup}>
+                  <div className={sidebarGroupTitle}>Load-in</div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className={`${typeLabel} text-text-muted`}>Diagonal wave on load</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <GroupIcon name="linear_scale" title="Diagonal load-in progress (0 = blank, 1 = full weave)" />
+                      <Label.Root className="sr-only" htmlFor="diagonal-reveal-progress">Diagonal load-in</Label.Root>
+                      <SliderWithInput
+                        id="diagonal-reveal-progress"
+                        value={diagonalRevealProgress}
+                        onValueChange={handleDiagonalRevealChange}
+                        defaultValue={WEAVING_URL_DEFAULTS.diagonalRevealProgress}
+                        onReset={() => handleDiagonalRevealChange(WEAVING_URL_DEFAULTS.diagonalRevealProgress)}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        snapPointCount={11}
+                        format={(n) => n.toFixed(2)}
+                        aria-label="Diagonal load-in progress"
+                      />
+                    </div>
+                    <span className={`${typeCaption} text-text-muted`}>Auto-plays on load and pattern change. Drag to scrub back.</span>
+                  </div>
+                </div>
+                )}
+                {view === 'weaving' && (
+                <div className={sidebarGroup}>
                   <div className={sidebarGroupTitle}>Stitch-in</div>
                   <div className="flex flex-col gap-1.5">
                     <span className={`${typeLabel} text-text-muted`}>From blank (Mosaic-parity)</span>
@@ -2821,6 +2887,7 @@ export default function App() {
                 weaveStitchRevealBleedRotation={weaveStitchRevealBleedRotation}
                 weaveStitchRevealBleedCrossFiber={weaveStitchRevealBleedCrossFiber}
                 weaveStitchRevealBleedDraftCoupled={!!weaveStitchRevealBleedDraftCoupled}
+                diagonalRevealProgress={diagonalRevealProgress}
                 weaveEnsMarkVisible={weaveEnsMarkVisible}
                 shimmerPlaying={shimmerPlaying}
                 shimmerPausedAtTime={shimmerPausedAtTime}
@@ -2891,6 +2958,7 @@ export default function App() {
                     weaveStitchRevealBleedRotation={weaveStitchRevealBleedRotation}
                     weaveStitchRevealBleedCrossFiber={weaveStitchRevealBleedCrossFiber}
                     weaveStitchRevealBleedDraftCoupled={!!weaveStitchRevealBleedDraftCoupled}
+                    diagonalRevealProgress={diagonalRevealProgress}
                     weaveEnsMarkVisible={weaveEnsMarkVisible}
                     size={halftoneSize}
                     softness={halftoneSoftness}
