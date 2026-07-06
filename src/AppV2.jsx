@@ -26,8 +26,15 @@ import {
   serializeTileArtRamp,
 } from './patterns/tileArtRamp';
 import { AppTooltip } from './components/ui/AppTooltip';
-import { EXPORT_MAX_DIMENSION, GRID_SNAPS, getGridSizeIndex, URL_STATE_MAX_LEN, WEAVE_ICONS } from './constants';
+import { GRID_SNAPS, getGridSizeIndex, URL_STATE_MAX_LEN, WEAVE_ICONS } from './constants';
 import { IMAGE_RECTS_URL_DEFAULTS, HALFTONE_DEFAULTS, KEYFRAME_ANIM_DEFAULT_SEC } from './urlDefaults';
+import {
+  capToMaxDimension,
+  pngBlobToFormat,
+  scaleCanvasToBlob,
+  downloadBlob,
+  imageExportFilename,
+} from './canvasImageExport';
 
 const ImageRectsHalftoneStage = lazy(() =>
   import('./components/ImageRectsHalftoneStage.jsx').then((m) => ({ default: m.ImageRectsHalftoneStage }))
@@ -218,7 +225,7 @@ function parseUrlStateV2(search) {
   const cf = params.get('cf');
   if (cf === 'webp' || cf === 'png') out.copyFormat = cf;
   const cs = params.get('cs');
-  if (cs !== null && [1, 2, 4, 8].includes(Number(cs))) out.copyScale = Number(cs);
+  if (cs !== null && [1, 2, 4, 8, 12].includes(Number(cs))) out.copyScale = Number(cs);
   const qg = params.get('qg');
   if (qg != null) {
     const n = Number(qg);
@@ -243,6 +250,11 @@ function parseUrlStateV2(search) {
   if (lsf != null) {
     const n = Number(lsf);
     if (Number.isFinite(n)) out.lumaSizeFloor = Math.max(0.05, Math.min(1, n / 100));
+  }
+  const cpad = params.get('cpad');
+  if (cpad != null) {
+    const n = Number(cpad);
+    if (Number.isFinite(n)) out.contentPadding = Math.max(0, Math.min(0.45, n / 100));
   }
   num('gm', 'cellGeometryMode', 0, 1);
   const glt = params.get('glt');
@@ -366,9 +378,10 @@ function buildUrlStateV2(state) {
   if (state.rectRatio !== def.rectRatio) p.set('rratio', String(Number(state.rectRatio.toFixed(2))));
   if (state.copyFormat !== def.copyFormat) p.set('cf', state.copyFormat);
   if (state.copyScale !== def.copyScale) p.set('cs', String(state.copyScale));
-  if (state.menuHidden === false) p.set('menu', '1');
+  if (state.menuHidden !== def.menuHidden) p.set('menu', state.menuHidden ? '0' : '1');
   if (state.mosaicBgGaps === true) p.set('gap', '1');
   if (state.patternFit != null && state.patternFit !== def.patternFit) p.set('display', state.patternFit);
+  if (state.contentPadding !== def.contentPadding) p.set('cpad', String(Math.round(state.contentPadding * 100)));
   if (state.stitchRevealMode !== def.stitchRevealMode) p.set('srm', String(state.stitchRevealMode));
   if (state.stitchRevealDurationSec !== def.stitchRevealDurationSec) p.set('srd', String(Math.round(state.stitchRevealDurationSec * 100)));
   if (state.stitchRevealSeed !== def.stitchRevealSeed) p.set('srs', String(Math.round(state.stitchRevealSeed)));
@@ -434,7 +447,7 @@ function buildUrlStateV2(state) {
  * patternFit + onPatternFitChange: optional controlled viewport (e.g. Fit/Fill in App.jsx nav); when set, sidebar Viewport block is omitted.
  */
 export default function AppV2({
-  menuHidden = true,
+  menuHidden = false,
   viewTitle = 'Mosaic',
   patternFit: patternFitProp = IMAGE_RECTS_URL_DEFAULTS.patternFit,
   onPatternFitChange,
@@ -464,6 +477,7 @@ export default function AppV2({
   const [cellGeometryMode, setCellGeometryMode] = useState(IMAGE_RECTS_URL_DEFAULTS.cellGeometryMode);
   const [mosaicBgGaps, setMosaicBgGaps] = useState(IMAGE_RECTS_URL_DEFAULTS.mosaicBgGaps);
   const [patternFitInternal, setPatternFitInternal] = useState(IMAGE_RECTS_URL_DEFAULTS.patternFit);
+  const [contentPadding, setContentPadding] = useState(IMAGE_RECTS_URL_DEFAULTS.contentPadding);
   const patternFit = patternFitExternal ? patternFitProp : patternFitInternal;
   const setPatternFit = patternFitExternal ? onPatternFitChange : setPatternFitInternal;
   const [stitchLumaMax, setStitchLumaMax] = useState(IMAGE_RECTS_URL_DEFAULTS.stitchLumaMax);
@@ -494,7 +508,7 @@ export default function AppV2({
   const [randomizeCornerRadius, setRandomizeCornerRadius] = useState(false);
   const [randomizeRectRatio, setRandomizeRectRatio] = useState(false);
   const [copyFormat, setCopyFormat] = useState(IMAGE_RECTS_URL_DEFAULTS.copyFormat); // 'png' | 'webp'
-  const [copyScale, setCopyScale] = useState(IMAGE_RECTS_URL_DEFAULTS.copyScale); // 1 | 2 | 4 | 8
+  const [copyScale, setCopyScale] = useState(IMAGE_RECTS_URL_DEFAULTS.copyScale); // 1 | 2 | 4 | 8 | 12
   const [mosaicHalftoneOn, setMosaicHalftoneOn] = useState(getInitialMosaicHalftoneOn);
   const [halftonePresetIndex, setHalftonePresetIndex] = useState(HALFTONE_DEFAULTS.presetIndex);
   const [halftoneSize, setHalftoneSize] = useState(HALFTONE_DEFAULTS.size);
@@ -511,8 +525,10 @@ export default function AppV2({
   const [halftoneGainC, setHalftoneGainC] = useState(HALFTONE_DEFAULTS.gainC);
   const [halftoneGainY, setHalftoneGainY] = useState(HALFTONE_DEFAULTS.gainY);
   const [copyFeedback, setCopyFeedback] = useState(null);
+  const [exportFeedback, setExportFeedback] = useState(null);
   const [configExportOpen, setConfigExportOpen] = useState(false);
   const copyFeedbackTimeoutRef = useRef(null);
+  const exportFeedbackTimeoutRef = useRef(null);
   const stitchPlayRecordTimeoutRef = useRef(null);
   const canvasRef = useRef(null);
   const halftoneContainerRef = useRef(null);
@@ -552,119 +568,59 @@ export default function AppV2({
     return canvasRef.current;
   }, [mosaicHalftoneOn]);
 
-  const capToMax = useCallback((width, height) => {
-    if (width <= EXPORT_MAX_DIMENSION && height <= EXPORT_MAX_DIMENSION) return [width, height];
-    const r = Math.min(EXPORT_MAX_DIMENSION / width, EXPORT_MAX_DIMENSION / height);
-    return [Math.round(width * r), Math.round(height * r)];
-  }, []);
-
-  /** Copy at copyScale×. Uses captureAtResolution when available so sharpness matches resolution. */
-  const handleCopy2xPng = useCallback(async () => {
-    if (!imageSource) {
-      setCopyFeedback('Pick media first');
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-      return;
-    }
+  /** Capture mosaic canvas at scale× as PNG or WebP. Flat mosaic: re-renders at target res; halftone: 2D upscale. */
+  const captureImageBlob = useCallback(async (scale, format) => {
+    if (!imageSource) throw new Error('Pick media first');
     const canvas = activeCopyCanvas();
-    if (!canvas || !canvas.width || !canvas.height) {
-      setCopyFeedback(mosaicHalftoneOn ? 'Halftone still preparing…' : 'Image still loading…');
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-      return;
+    if (!canvas?.width || !canvas?.height) {
+      throw new Error(mosaicHalftoneOn ? 'Halftone still preparing…' : 'Image still loading…');
     }
     if (!mosaicHalftoneOn && imageRectsCaptureRef.current?.captureAtResolution) {
       const displayW = canvas.width / IMAGE_RECTS_DPR;
       const displayH = canvas.height / IMAGE_RECTS_DPR;
-      const [w, h] = capToMax(Math.round(displayW * copyScale), Math.round(displayH * copyScale));
-      const blob = await imageRectsCaptureRef.current.captureAtResolution(w, h);
-      if (!blob) {
-        setCopyFeedback('Image still loading…');
-        copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-        return;
-      }
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      return;
-    }
-    const w = canvas.width * copyScale;
-    const h = canvas.height * copyScale;
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const ctx = off.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(canvas, 0, 0, w, h);
-    const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
-    if (blob) await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-  }, [copyScale, capToMax, mosaicHalftoneOn, activeCopyCanvas, imageSource]);
-
-  /** Copy at copyScale× as WebP. Uses captureAtResolution when available, then converts to WebP. */
-  const handleCopyWebp = useCallback(async () => {
-    if (!imageSource) {
-      setCopyFeedback('Pick media first');
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-      return;
-    }
-    const canvas = activeCopyCanvas();
-    if (!canvas || !canvas.width || !canvas.height) {
-      setCopyFeedback(mosaicHalftoneOn ? 'Halftone still preparing…' : 'Image still loading…');
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-      return;
-    }
-    if (!mosaicHalftoneOn && imageRectsCaptureRef.current?.captureAtResolution) {
-      const displayW = canvas.width / IMAGE_RECTS_DPR;
-      const displayH = canvas.height / IMAGE_RECTS_DPR;
-      const [w, h] = capToMax(Math.round(displayW * copyScale), Math.round(displayH * copyScale));
+      const [w, h] = capToMaxDimension(Math.round(displayW * scale), Math.round(displayH * scale));
       const pngBlob = await imageRectsCaptureRef.current.captureAtResolution(w, h);
-      if (!pngBlob) {
-        setCopyFeedback('Image still loading…');
-        copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2500);
-        return;
-      }
-      const pngUrl = URL.createObjectURL(pngBlob);
-      const webpBlob = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const off = document.createElement('canvas');
-          off.width = img.naturalWidth;
-          off.height = img.naturalHeight;
-          const ctx = off.getContext('2d');
-          if (!ctx) { reject(new Error('2D context failed')); return; }
-          ctx.drawImage(img, 0, 0);
-          off.toBlob(resolve, 'image/webp', 0.92);
-        };
-        img.onerror = () => reject(new Error('Image load failed'));
-        img.src = pngUrl;
-      });
-      URL.revokeObjectURL(pngUrl);
-      if (webpBlob) await navigator.clipboard.write([new ClipboardItem({ 'image/webp': webpBlob })]);
-      return;
+      if (!pngBlob) throw new Error('Image still loading…');
+      const blob = await pngBlobToFormat(pngBlob, format);
+      return { blob, w, h, prefix: 'mosaic' };
     }
-    const w = canvas.width * copyScale;
-    const h = canvas.height * copyScale;
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const ctx = off.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(canvas, 0, 0, w, h);
-    const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/webp', 0.92));
-    if (blob) await navigator.clipboard.write([new ClipboardItem({ 'image/webp': blob })]);
-  }, [copyScale, capToMax, mosaicHalftoneOn, activeCopyCanvas, imageSource]);
+    const [w, h] = capToMaxDimension(Math.round(canvas.width * scale), Math.round(canvas.height * scale));
+    const blob = await scaleCanvasToBlob(canvas, w, h, format);
+    return { blob, w, h, prefix: 'mosaic' };
+  }, [mosaicHalftoneOn, activeCopyCanvas, imageSource]);
 
   const handleCopy = useCallback(async () => {
     if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+    setCopyFeedback(null);
     try {
-      if (copyFormat === 'png') await handleCopy2xPng();
-      else await handleCopyWebp();
+      const { blob } = await captureImageBlob(copyScale, copyFormat);
+      const mime = copyFormat === 'webp' ? 'image/webp' : 'image/png';
+      await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
       setCopyFeedback('Copied!');
       copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
     } catch (err) {
       setCopyFeedback(err?.message ?? 'Copy failed');
       copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 3000);
     }
-  }, [copyFormat, handleCopy2xPng, handleCopyWebp]);
+  }, [copyFormat, copyScale, captureImageBlob]);
+
+  const handleExport = useCallback(async () => {
+    if (exportFeedbackTimeoutRef.current) clearTimeout(exportFeedbackTimeoutRef.current);
+    setExportFeedback(null);
+    try {
+      const { blob, w, h, prefix } = await captureImageBlob(copyScale, copyFormat);
+      downloadBlob(blob, imageExportFilename(prefix, w, h, copyFormat));
+      setExportFeedback('Exported!');
+      exportFeedbackTimeoutRef.current = setTimeout(() => setExportFeedback(null), 2000);
+    } catch (err) {
+      setExportFeedback(err?.message ?? 'Export failed');
+      exportFeedbackTimeoutRef.current = setTimeout(() => setExportFeedback(null), 3000);
+    }
+  }, [copyFormat, copyScale, captureImageBlob]);
 
   useEffect(() => () => {
     if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+    if (exportFeedbackTimeoutRef.current) clearTimeout(exportFeedbackTimeoutRef.current);
   }, []);
 
   /** Video recording (WebM or MP4). Mosaic: auto-starts when media becomes video (per tab — own hook instance). */
@@ -744,6 +700,7 @@ export default function AppV2({
     rectAspect,
     rectRatio,
     patternFit,
+    contentPadding,
   });
 
   const configHandoffState = useMemo(() => ({
@@ -789,6 +746,7 @@ export default function AppV2({
       rectAspect,
       rectRatio,
       patternFit,
+      contentPadding,
     }),
     mosaicHalftoneOn,
     halftonePresetIndex,
@@ -816,7 +774,7 @@ export default function AppV2({
     mosaicBgGaps, stitchLumaMax, stitchRevealMode, stitchRevealProgress, stitchRevealSeed, stitchRevealScale,
     stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation,
     stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, quantizeSteps, quantizeMode, quantizeGamma,
-    quantizeDither, patternIndex, rectRadius, rectAspect, rectRatio, patternFit, mosaicHalftoneOn,
+    quantizeDither, patternIndex, rectRadius, rectAspect, rectRatio, patternFit, contentPadding, mosaicHalftoneOn,
     halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType,
     halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC,
     halftoneGainC, halftoneGainY, copyFormat, copyScale, stitchRevealDurationSec, mediaTextureKind,
@@ -865,6 +823,7 @@ export default function AppV2({
     setRectAspect,
     setRectRatio,
     setPatternFit,
+    setContentPadding,
   };
 
   const applyMosaicSnapshot = useCallback((snap) => {
@@ -966,6 +925,7 @@ export default function AppV2({
     rectAspect,
     rectRatio,
     patternFit,
+    contentPadding,
     setMosaicAfter,
   ]);
 
@@ -1155,6 +1115,7 @@ export default function AppV2({
     setCellGeometryMode(IMAGE_RECTS_URL_DEFAULTS.cellGeometryMode);
     setMosaicBgGaps(IMAGE_RECTS_URL_DEFAULTS.mosaicBgGaps);
     setPatternFit(IMAGE_RECTS_URL_DEFAULTS.patternFit);
+    setContentPadding(IMAGE_RECTS_URL_DEFAULTS.contentPadding);
     setStitchLumaMax(IMAGE_RECTS_URL_DEFAULTS.stitchLumaMax);
     setQuantizeSteps(IMAGE_RECTS_URL_DEFAULTS.quantizeSteps);
     setQuantizeMode(IMAGE_RECTS_URL_DEFAULTS.quantizeMode);
@@ -1262,6 +1223,7 @@ export default function AppV2({
       if (typeof onPatternFitChange === 'function') onPatternFitChange(q.patternFit);
       else setPatternFitInternal(q.patternFit);
     }
+    if (q.contentPadding != null) setContentPadding(q.contentPadding);
     if (q.mosaicHalftoneOn != null) setMosaicHalftoneOn(!!q.mosaicHalftoneOn);
     if (q.halftonePresetIndex != null) setHalftonePresetIndex(q.halftonePresetIndex);
     if (q.halftoneSize != null) setHalftoneSize(q.halftoneSize);
@@ -1291,7 +1253,7 @@ export default function AppV2({
         gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp,
         quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex,
         patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax,
-        rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit,
+        rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit, contentPadding,
         stitchRevealMode, stitchRevealDurationSec, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness,
         stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled,
         keyframeAnimDurationSec: keyframeDurationSec,
@@ -1305,7 +1267,7 @@ export default function AppV2({
       }
     }, 400);
     return () => { clearTimeout(urlSyncTimeoutRef.current); };
-  }, [mosaicHalftoneOn, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex, patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit, stitchRevealMode, stitchRevealDurationSec, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, keyframeDurationSec, editingAfter, mosaicBefore, mosaicAfter]);
+  }, [mosaicHalftoneOn, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex, patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit, contentPadding, stitchRevealMode, stitchRevealDurationSec, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, keyframeDurationSec, editingAfter, mosaicBefore, mosaicAfter]);
 
   /** Keyboard shortcuts: Mod+C copy, Mod+Shift+R / F5 reload (no presets in v2). */
   useEffect(() => {
@@ -1416,6 +1378,32 @@ export default function AppV2({
               </div>
             </div>
           )}
+          <div className={`${sidebarGroup} ${sidebarGroupSticky}`}>
+            <div className={sidebarGroupTitle}>Canvas</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <GroupIcon name="crop" title="Inset mosaic from canvas edges" />
+              <Label.Root className="sr-only" htmlFor="content-padding-v2">Canvas padding</Label.Root>
+              <SliderWithInput
+                id="content-padding-v2"
+                value={contentPadding}
+                onValueChange={setContentPadding}
+                defaultValue={IMAGE_RECTS_URL_DEFAULTS.contentPadding}
+                onReset={() => setContentPadding(IMAGE_RECTS_URL_DEFAULTS.contentPadding)}
+                min={0}
+                max={0.45}
+                step={0.01}
+                format={(n) => `${Math.round(n * 100)}%`}
+                parse={(s) => {
+                  const t = String(s).trim().replace(/%$/, '');
+                  if (t === '') return 0;
+                  const n = Number(t);
+                  if (!Number.isFinite(n)) return null;
+                  return n > 1 ? n / 100 : n;
+                }}
+                aria-label="Background inset on each canvas edge (mosaic draws in the inner area)"
+              />
+            </div>
+          </div>
           <div className={`${sidebarGroup} ${sidebarGroupSticky}`}>
             <div className={sidebarGroupTitle}>Actions</div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2343,6 +2331,7 @@ export default function AppV2({
                   cellGeometryMode={cellGeometryMode}
                   stitchLumaMax={stitchLumaMax}
                   nonStitchShowsBg={mosaicBgGaps}
+                  contentPadding={contentPadding}
                   stitchRevealMode={stitchRevealMode}
                   stitchRevealProgress={stitchRevealProgress}
                   stitchRevealSeed={stitchRevealSeed}
@@ -2409,6 +2398,7 @@ export default function AppV2({
               cellGeometryMode={cellGeometryMode}
               stitchLumaMax={stitchLumaMax}
               nonStitchShowsBg={mosaicBgGaps}
+              contentPadding={contentPadding}
               stitchRevealMode={stitchRevealMode}
               stitchRevealProgress={stitchRevealProgress}
               stitchRevealSeed={stitchRevealSeed}
@@ -2442,7 +2432,8 @@ export default function AppV2({
           copyDefaults={{ copyScale: IMAGE_RECTS_URL_DEFAULTS.copyScale, copyFormat: IMAGE_RECTS_URL_DEFAULTS.copyFormat }}
           onCopy={handleCopy}
           copyFeedback={copyFeedback}
-          showExport={false}
+          onDownload={handleExport}
+          downloadFeedback={exportFeedback}
           onOpenConfigExport={() => setConfigExportOpen(true)}
           recordFormat={recordFormat}
           setRecordFormat={setRecordFormat}

@@ -16,6 +16,14 @@ import { ConfigExportModal } from './components/ConfigExportModal.jsx';
 import { halftoneCmykPresets } from '@paper-design/shaders-react';
 import { PATTERNS, buildPatternSelectOptions, randomEnabledPatternIndex } from './patterns';
 import { getCopyCanvas } from './copyHelpers';
+import {
+  capToMaxDimension,
+  pngBlobToFormat,
+  scaleCanvasToBlob,
+  downloadBlob,
+  imageExportFilename,
+} from './canvasImageExport';
+import { diagonalRevealDurationSec } from './weaveDiagonalReveal';
 
 /** Copy/export/record: weaving + halftone uses halftone canvas (legacy view name `weavingHalftone`). */
 function copyExportView(view, weaveHalftoneOn) {
@@ -23,7 +31,6 @@ function copyExportView(view, weaveHalftoneOn) {
   return view;
 }
 import {
-  EXPORT_MAX_DIMENSION,
   GRID_SNAPS,
   getGridSizeIndex,
   CANVAS_ASPECT_PRESETS,
@@ -297,7 +304,7 @@ function parseUrlState(search) {
   const cf = params.get('cf');
   if (cf === 'webp' || cf === 'png') out.copyFormat = cf;
   const cs = params.get('cs');
-  if (cs !== null && [1, 2, 4, 8].includes(Number(cs))) out.copyScale = Number(cs);
+  if (cs !== null && [1, 2, 4, 8, 12].includes(Number(cs))) out.copyScale = Number(cs);
   const v = params.get('v');
   if (v === '1') out.view = 'weaving';
   else if (v === '2' || v === '5' || v === '6') out.view = 'imageRects';
@@ -310,7 +317,8 @@ function parseUrlState(search) {
   const display = params.get('display');
   if (display === 'fill' || display === 'fit') out.patternFit = display;
   const menu = params.get('menu');
-  if (menu === '1') out.menuHidden = false; // menu=1 → sidebar always visible
+  if (menu === '1') out.menuHidden = false;
+  else if (menu === '0') out.menuHidden = true;
   const kad = params.get('kad');
   if (kad != null) {
     const n = Number(kad);
@@ -471,7 +479,7 @@ function buildUrlState(state) {
   if (state.comboRectRadius !== COMBO_DEFAULTS.rectRadius) p.set('crr', String(Number(state.comboRectRadius.toFixed(2))));
   if (state.comboRectAspect !== COMBO_DEFAULTS.rectAspect) p.set('cra', String(Number(state.comboRectAspect.toFixed(2))));
   if (state.comboRectRatio !== COMBO_DEFAULTS.rectRatio) p.set('cratio', String(Number(state.comboRectRatio.toFixed(2))));
-  if (state.menuHidden === false) p.set('menu', '1');
+  if (state.menuHidden !== def.menuHidden) p.set('menu', state.menuHidden ? '0' : '1');
   const kd =
     state.keyframeAnimDurationSec != null && Number.isFinite(state.keyframeAnimDurationSec)
       ? state.keyframeAnimDurationSec
@@ -561,7 +569,7 @@ export default function App() {
   const [view, setView] = useState(getInitialView); // 'weaving' | 'imageRects' | 'imageRectsHalftone' — URL ?v=1–4 (+ legacy 5/6 → mosaic)
   const [weaveHalftoneOn, setWeaveHalftoneOn] = useState(getInitialWeaveHalftone);
   /** When true, sidebar is hidden until hover (v1–v5); when false, sidebar is always visible. Toggle in nav; persisted in URL ?menu=1. */
-  const [menuHidden, setMenuHidden] = useState(true);
+  const [menuHidden, setMenuHidden] = useState(WEAVING_URL_DEFAULTS.menuHidden);
   const [presetIndex, setPresetIndex] = useState(null); // null = custom
   const [pattern, setPattern] = useState(WEAVING_URL_DEFAULTS.pattern);
   const [palette, setPalette] = useState(WEAVING_URL_DEFAULTS.palette);
@@ -658,11 +666,12 @@ export default function App() {
   /** False = timed ramp (`srd`); true = slider + keyframe A/B (`srkm`). */
   const [weaveStitchRevealKeyframeDrive, setWeaveStitchRevealKeyframeDrive] = useState(WEAVING_URL_DEFAULTS.weaveStitchRevealKeyframeDrive);
   const [weaveStitchRevealPlayToken, setWeaveStitchRevealPlayToken] = useState(0);
-  /** Copy format: 'png' or 'webp'; copyScale: 1, 2, 4, or 8× display size. */
+  /** Diagonal load-in wave (0 = start, 1 = fully woven); auto-plays on load / pattern change. */
+  const [diagonalRevealProgress, setDiagonalRevealProgress] = useState(0);
+  const diagonalRevealAnimRafRef = useRef(0);
+  /** Copy format: 'png' or 'webp'; copyScale: 1, 2, 4, 8, or 12× display size (copy + download). */
   const [copyFormat, setCopyFormat] = useState(WEAVING_URL_DEFAULTS.copyFormat);
   const [copyScale, setCopyScale] = useState(WEAVING_URL_DEFAULTS.copyScale);
-  /** Export scale for PNG download (one of EXPORT_SCALES). */
-  const [exportScale, setExportScale] = useState(WEAVING_URL_DEFAULTS.exportScale);
   /** Include in Randomize: rect aspect and corner radius (off = keep current when randomizing). */
   const [randomizeRectAspect, setRandomizeRectAspect] = useState(true);
   const [randomizeCornerRadius, setRandomizeCornerRadius] = useState(true);
@@ -866,7 +875,7 @@ export default function App() {
     if (q.comboRectRatio != null) setComboRectRatio(q.comboRectRatio);
     if (q.view != null) setView(q.view);
     if (q.weaveHalftoneOn != null) setWeaveHalftoneOn(!!q.weaveHalftoneOn);
-    if (q.menuHidden === false) setMenuHidden(false);
+    if (q.menuHidden != null) setMenuHidden(q.menuHidden);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; applyPreset is stable
   }, []);
 
@@ -884,164 +893,60 @@ export default function App() {
     if (shimmer && shimmerPlaying && !weaveKeyframePlayingRef.current) setShimmerPhase(computeShimmerPhase(time));
   }, [shimmer, shimmerPlaying, computeShimmerPhase]);
 
-  /** Copy canvas at copyScale× resolution. Weaving: re-renders at target res for sharpness. Others: 2D upscale. */
-  const handleCopy2xPng = useCallback(async () => {
+  /** Capture canvas at scale× as PNG or WebP blob. Weaving flat: re-renders at target res; others: 2D upscale. */
+  const captureImageBlob = useCallback(async (scale, format) => {
     await new Promise((r) => requestAnimationFrame(r));
-    const capToMax = (width, height) => {
-      if (width <= EXPORT_MAX_DIMENSION && height <= EXPORT_MAX_DIMENSION) return [width, height];
-      const r = Math.min(EXPORT_MAX_DIMENSION / width, EXPORT_MAX_DIMENSION / height);
-      return [Math.round(width * r), Math.round(height * r)];
-    };
     if (view === 'weaving' && !weaveHalftoneOn && weavingCaptureRef.current?.captureAtResolution) {
       const canvas = canvasRef.current;
       if (!canvas?.width || !canvas?.height) throw new Error('Canvas not ready');
       const displayW = canvas.width / WEAVING_DPR;
       const displayH = canvas.height / WEAVING_DPR;
-      const [w, h] = capToMax(Math.round(displayW * copyScale), Math.round(displayH * copyScale));
-      const blob = await weavingCaptureRef.current.captureAtResolution(w, h);
-      if (!blob) throw new Error('toBlob failed');
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      return;
-    }
-    const canvas = getCopyCanvas(copyExportView(view, weaveHalftoneOn), canvasRef, halftoneCanvasRef, halftoneContainerRef);
-    if (!canvas || !canvas.width || !canvas.height) throw new Error('Canvas not ready');
-    const w = canvas.width * copyScale;
-    const h = canvas.height * copyScale;
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const ctx = off.getContext('2d');
-    if (!ctx) throw new Error('2D context failed');
-    ctx.drawImage(canvas, 0, 0, w, h);
-    const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('toBlob failed');
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-  }, [view, weaveHalftoneOn, copyScale]);
-
-  /** Copy canvas at copyScale× as WebP. Weaving: re-renders at target res then converts to WebP. */
-  const handleCopyWebp = useCallback(async () => {
-    await new Promise((r) => requestAnimationFrame(r));
-    const capToMax = (width, height) => {
-      if (width <= EXPORT_MAX_DIMENSION && height <= EXPORT_MAX_DIMENSION) return [width, height];
-      const r = Math.min(EXPORT_MAX_DIMENSION / width, EXPORT_MAX_DIMENSION / height);
-      return [Math.round(width * r), Math.round(height * r)];
-    };
-    if (view === 'weaving' && !weaveHalftoneOn && weavingCaptureRef.current?.captureAtResolution) {
-      const canvas = canvasRef.current;
-      if (!canvas?.width || !canvas?.height) throw new Error('Canvas not ready');
-      const displayW = canvas.width / WEAVING_DPR;
-      const displayH = canvas.height / WEAVING_DPR;
-      const [w, h] = capToMax(Math.round(displayW * copyScale), Math.round(displayH * copyScale));
+      const [w, h] = capToMaxDimension(Math.round(displayW * scale), Math.round(displayH * scale));
       const pngBlob = await weavingCaptureRef.current.captureAtResolution(w, h);
-      if (!pngBlob) throw new Error('toBlob failed');
-      const pngUrl = URL.createObjectURL(pngBlob);
-      const webpBlob = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const off = document.createElement('canvas');
-          off.width = img.naturalWidth;
-          off.height = img.naturalHeight;
-          const ctx = off.getContext('2d');
-          if (!ctx) { reject(new Error('2D context failed')); return; }
-          ctx.drawImage(img, 0, 0);
-          off.toBlob(resolve, 'image/webp', 0.92);
-        };
-        img.onerror = () => reject(new Error('Image load failed'));
-        img.src = pngUrl;
-      });
-      URL.revokeObjectURL(pngUrl);
-      if (!webpBlob) throw new Error('toBlob WebP failed');
-      await navigator.clipboard.write([new ClipboardItem({ 'image/webp': webpBlob })]);
-      return;
+      if (!pngBlob) throw new Error('Capture failed');
+      const blob = await pngBlobToFormat(pngBlob, format);
+      return { blob, w, h, prefix: 'weaving' };
     }
     const canvas = getCopyCanvas(copyExportView(view, weaveHalftoneOn), canvasRef, halftoneCanvasRef, halftoneContainerRef);
-    if (!canvas || !canvas.width || !canvas.height) throw new Error('Canvas not ready');
-    const w = canvas.width * copyScale;
-    const h = canvas.height * copyScale;
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const ctx = off.getContext('2d');
-    if (!ctx) throw new Error('2D context failed');
-    ctx.drawImage(canvas, 0, 0, w, h);
-    const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/webp', 0.92));
-    if (!blob) throw new Error('toBlob failed');
-    await navigator.clipboard.write([new ClipboardItem({ 'image/webp': blob })]);
-  }, [view, weaveHalftoneOn, copyScale]);
+    if (!canvas?.width || !canvas?.height) throw new Error('Canvas not ready');
+    const [w, h] = capToMaxDimension(Math.round(canvas.width * scale), Math.round(canvas.height * scale));
+    const blob = await scaleCanvasToBlob(canvas, w, h, format);
+    return { blob, w, h, prefix: 'weaving' };
+  }, [view, weaveHalftoneOn]);
 
   const handleCopy = useCallback(async () => {
     if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
     setCopyFeedback(null);
     try {
-      if (copyFormat === 'png') await handleCopy2xPng();
-      else await handleCopyWebp();
+      const { blob } = await captureImageBlob(copyScale, copyFormat);
+      const mime = copyFormat === 'webp' ? 'image/webp' : 'image/png';
+      await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
       setCopyFeedback('Copied!');
       copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
     } catch (err) {
       setCopyFeedback(err?.message ?? 'Copy failed');
       copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 3000);
     }
-  }, [copyFormat, handleCopy2xPng, handleCopyWebp]);
+  }, [copyFormat, copyScale, captureImageBlob]);
 
-  useEffect(() => () => {
-    if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
-    if (exportFeedbackTimeoutRef.current) clearTimeout(exportFeedbackTimeoutRef.current);
-  }, []);
-
-  /** Export at exportScale× as PNG (download). Weaving view: renders shader at target resolution. Halftone views: 2D upscale of display canvas. */
   const handleExport = useCallback(async () => {
     if (exportFeedbackTimeoutRef.current) clearTimeout(exportFeedbackTimeoutRef.current);
     setExportFeedback(null);
     try {
-      await new Promise((r) => requestAnimationFrame(r));
-      const scale = Math.max(1, Math.min(24, Number(exportScale) || 4));
-
-      const capToMax = (width, height) => {
-        if (width <= EXPORT_MAX_DIMENSION && height <= EXPORT_MAX_DIMENSION) return [width, height];
-        const r = Math.min(EXPORT_MAX_DIMENSION / width, EXPORT_MAX_DIMENSION / height);
-        return [Math.round(width * r), Math.round(height * r)];
-      };
-
-      if (view === 'weaving' && !weaveHalftoneOn && weavingCaptureRef.current?.captureAtResolution) {
-        const canvas = canvasRef.current;
-        if (!canvas?.width || !canvas?.height) throw new Error('Canvas not ready');
-        const displayW = canvas.width / WEAVING_DPR;
-        const displayH = canvas.height / WEAVING_DPR;
-        let [w, h] = capToMax(Math.round(displayW * scale), Math.round(displayH * scale));
-        const blob = await weavingCaptureRef.current.captureAtResolution(w, h);
-        if (!blob) throw new Error('Export failed (try lower scale)');
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `weaving-${w}x${h}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        const canvas = getCopyCanvas(copyExportView(view, weaveHalftoneOn), canvasRef, halftoneCanvasRef, halftoneContainerRef);
-        if (!canvas || !canvas.width || !canvas.height) throw new Error('Canvas not ready');
-        let [w, h] = capToMax(Math.round(canvas.width * scale), Math.round(canvas.height * scale));
-        const off = document.createElement('canvas');
-        off.width = w;
-        off.height = h;
-        const ctx = off.getContext('2d');
-        if (!ctx) throw new Error('2D context failed');
-        ctx.drawImage(canvas, 0, 0, w, h);
-        const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
-        if (!blob) throw new Error('Export failed (try lower scale)');
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `weaving-${w}x${h}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      const { blob, w, h, prefix } = await captureImageBlob(copyScale, copyFormat);
+      downloadBlob(blob, imageExportFilename(prefix, w, h, copyFormat));
       setExportFeedback('Exported!');
       exportFeedbackTimeoutRef.current = setTimeout(() => setExportFeedback(null), 2000);
     } catch (err) {
       setExportFeedback(err?.message ?? 'Export failed');
       exportFeedbackTimeoutRef.current = setTimeout(() => setExportFeedback(null), 3000);
     }
-  }, [view, weaveHalftoneOn, exportScale]);
+  }, [copyFormat, copyScale, captureImageBlob]);
+
+  useEffect(() => () => {
+    if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+    if (exportFeedbackTimeoutRef.current) clearTimeout(exportFeedbackTimeoutRef.current);
+  }, []);
 
   /** Video recording (WebM or MP4). Canvas resolved per current view. */
   const {
@@ -1248,11 +1153,10 @@ export default function App() {
       weaveHalftoneOn,
       copyFormat,
       copyScale,
-      exportScale,
       shimmerPlaying,
       colorwayAnimPlaying,
     }),
-    [weaveKeyframeState, presetIndex, weaveHalftoneOn, copyFormat, copyScale, exportScale, shimmerPlaying, colorwayAnimPlaying],
+    [weaveKeyframeState, presetIndex, weaveHalftoneOn, copyFormat, copyScale, shimmerPlaying, colorwayAnimPlaying],
   );
 
   const weaveKeyframeSettersRef = useRef({});
@@ -1469,6 +1373,42 @@ export default function App() {
     return () => cancelAnimationFrame(rafId);
   }, [weaveStitchRevealMode, weaveStitchRevealPlayToken, pattern, weaveStitchRevealDurationSec, weaveStitchRevealKeyframeDrive]);
 
+  /** Diagonal weave load-in: same timing as before, now scrubbable via sidebar slider. */
+  useEffect(() => {
+    if (view !== 'weaving') return undefined;
+    if (diagonalRevealAnimRafRef.current) {
+      cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+      diagonalRevealAnimRafRef.current = 0;
+    }
+    setDiagonalRevealProgress(0);
+    const durationMs = diagonalRevealDurationSec(gridSize, canvasAspect) * 1000;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      setDiagonalRevealProgress(t);
+      if (t < 1) {
+        diagonalRevealAnimRafRef.current = requestAnimationFrame(tick);
+      } else {
+        diagonalRevealAnimRafRef.current = 0;
+      }
+    };
+    diagonalRevealAnimRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (diagonalRevealAnimRafRef.current) {
+        cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+        diagonalRevealAnimRafRef.current = 0;
+      }
+    };
+  }, [view, pattern, gridSize, canvasAspect]);
+
+  const handleDiagonalRevealChange = useCallback((v) => {
+    if (diagonalRevealAnimRafRef.current) {
+      cancelAnimationFrame(diagonalRevealAnimRafRef.current);
+      diagonalRevealAnimRafRef.current = 0;
+    }
+    setDiagonalRevealProgress(v);
+  }, []);
+
   useEffect(() => {
     if (!weaveKeyframePlaying) weaveKeyframeStitchOverrideRef.current = false;
   }, [weaveKeyframePlaying]);
@@ -1610,7 +1550,6 @@ export default function App() {
     setWeaveStitchRevealKeyframeDrive(WEAVING_URL_DEFAULTS.weaveStitchRevealKeyframeDrive);
     setCopyFormat(WEAVING_URL_DEFAULTS.copyFormat);
     setCopyScale(WEAVING_URL_DEFAULTS.copyScale);
-    setExportScale(WEAVING_URL_DEFAULTS.exportScale);
     setRandomizeRectAspect(true);
     setRandomizeCornerRadius(true);
     setHalftoneSize(HALFTONE_DEFAULTS.size);
@@ -2340,6 +2279,32 @@ export default function App() {
                 </div>
                 {view === 'weaving' && (
                 <div className={sidebarGroup}>
+                  <div className={sidebarGroupTitle}>Load-in</div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className={`${typeLabel} text-text-muted`}>Diagonal wave on load</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <GroupIcon name="linear_scale" title="Diagonal load-in progress (0 = blank, 1 = full weave)" />
+                      <Label.Root className="sr-only" htmlFor="diagonal-reveal-progress">Diagonal load-in</Label.Root>
+                      <SliderWithInput
+                        id="diagonal-reveal-progress"
+                        value={diagonalRevealProgress}
+                        onValueChange={handleDiagonalRevealChange}
+                        defaultValue={WEAVING_URL_DEFAULTS.diagonalRevealProgress}
+                        onReset={() => handleDiagonalRevealChange(WEAVING_URL_DEFAULTS.diagonalRevealProgress)}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        snapPointCount={11}
+                        format={(n) => n.toFixed(2)}
+                        aria-label="Diagonal load-in progress"
+                      />
+                    </div>
+                    <span className={`${typeCaption} text-text-muted`}>Auto-plays on load and pattern change. Drag to scrub back.</span>
+                  </div>
+                </div>
+                )}
+                {view === 'weaving' && (
+                <div className={sidebarGroup}>
                   <div className={sidebarGroupTitle}>Stitch-in</div>
                   <div className="flex flex-col gap-1.5">
                     <span className={`${typeLabel} text-text-muted`}>From blank (Mosaic-parity)</span>
@@ -2923,6 +2888,7 @@ export default function App() {
                 weaveStitchRevealBleedRotation={weaveStitchRevealBleedRotation}
                 weaveStitchRevealBleedCrossFiber={weaveStitchRevealBleedCrossFiber}
                 weaveStitchRevealBleedDraftCoupled={!!weaveStitchRevealBleedDraftCoupled}
+                diagonalRevealProgress={diagonalRevealProgress}
                 weaveEnsMarkVisible={weaveEnsMarkVisible}
                 shimmerPlaying={shimmerPlaying}
                 shimmerPausedAtTime={shimmerPausedAtTime}
@@ -2993,6 +2959,7 @@ export default function App() {
                     weaveStitchRevealBleedRotation={weaveStitchRevealBleedRotation}
                     weaveStitchRevealBleedCrossFiber={weaveStitchRevealBleedCrossFiber}
                     weaveStitchRevealBleedDraftCoupled={!!weaveStitchRevealBleedDraftCoupled}
+                    diagonalRevealProgress={diagonalRevealProgress}
                     weaveEnsMarkVisible={weaveEnsMarkVisible}
                     size={halftoneSize}
                     softness={halftoneSoftness}
@@ -3024,15 +2991,11 @@ export default function App() {
             copyDefaults={{ copyScale: WEAVING_URL_DEFAULTS.copyScale, copyFormat: WEAVING_URL_DEFAULTS.copyFormat }}
             onCopy={handleCopy}
             copyFeedback={copyFeedback}
-            showExport
+            onDownload={handleExport}
+            downloadFeedback={exportFeedback}
             showEmbedExport={view === 'weaving'}
             onOpenEmbedExport={() => setEmbedExportOpen(true)}
             onOpenConfigExport={() => setConfigExportOpen(true)}
-            exportScale={exportScale}
-            setExportScale={setExportScale}
-            exportDefaults={{ exportScale: WEAVING_URL_DEFAULTS.exportScale }}
-            onExport={handleExport}
-            exportFeedback={exportFeedback}
             recordFormat={recordFormat}
             setRecordFormat={setRecordFormat}
             isRecording={isRecording}

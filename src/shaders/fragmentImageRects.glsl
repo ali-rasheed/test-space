@@ -48,6 +48,7 @@ uniform float u_lumaSizeFloor;   // min scale multiplier at the “small” end 
 uniform float u_cellGeometryMode;
 uniform float u_stitchLumaMax;    // darkness gate: weave stitch only when lum ≤ this (0=black … 1=white)
 uniform float u_nonStitchShowsBg; // 1 = bright non-stitched cells use background instead of plain tile fill
+uniform float u_contentPadding;   // 0–0.45: fraction of canvas width/height per edge; band is BG only (halftone back ink)
 
 // Stitch-in reveal: 0 = off; 1 = noise (FBM); 2 = bleed (anisotropic FBM + mix).
 uniform float u_stitchRevealMode;
@@ -60,6 +61,23 @@ uniform float u_stitchRevealBleedAnisotropy;
 uniform float u_stitchRevealBleedRotation;
 uniform float u_stitchRevealBleedCrossFiber;
 uniform float u_stitchRevealBleedDraftCoupled;
+
+// All colorways: u_useAllColorways + u_colorwayNoiseMode — 0 = hash, 1 = smooth Perlin+FBM, 2 = dye bleed.
+uniform float u_useAllColorways;
+uniform float u_colorwaySeed;
+uniform float u_colorwayNoiseScale;
+uniform float u_colorwayNoiseMode;
+uniform float u_colorwayNoiseOctaves;
+uniform float u_colorwayNoisePersistence;
+uniform float u_colorwayNoiseLacunarity;
+uniform float u_colorwayNoiseBias;
+uniform float u_colorwayNoiseX;
+uniform float u_colorwayBleedAnisotropy;
+uniform float u_colorwayBleedRotation;
+uniform float u_colorwayBleedCrossFiber;
+uniform float u_colorwayBleedDraftCoupled;
+uniform vec4 u_colorwayInclude0123;
+uniform float u_colorwayInclude4;
 
 // Tile art (rectColorSource == 3): eight-slot luma ramp, optional empty field threshold.
 uniform float u_tileArtLevels;      // 2–8 bands
@@ -147,6 +165,108 @@ vec4 getPaletteColor(float palette, float shade) {
   if (s == 1) return vec4(0.34902, 0.341176, 0.333333, 1.0);   // 500
   if (s == 2) return vec4(0.933333, 0.929412, 0.929412, 1.0);   // 100
   return vec4(0.45098, 0.45098, 0.45098, 1.0);                  // 400
+}
+
+float colorwayHash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+vec2 colorwayHash22(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+float colorwayPerlin01(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  vec2 g00 = colorwayHash22(i + vec2(0.0, 0.0)) * 2.0 - 1.0;
+  vec2 g10 = colorwayHash22(i + vec2(1.0, 0.0)) * 2.0 - 1.0;
+  vec2 g01 = colorwayHash22(i + vec2(0.0, 1.0)) * 2.0 - 1.0;
+  vec2 g11 = colorwayHash22(i + vec2(1.0, 1.0)) * 2.0 - 1.0;
+  float n00 = dot(g00, f - vec2(0.0, 0.0));
+  float n10 = dot(g10, f - vec2(1.0, 0.0));
+  float n01 = dot(g01, f - vec2(0.0, 1.0));
+  float n11 = dot(g11, f - vec2(1.0, 1.0));
+  float nx = mix(n00, n10, u.x);
+  float ny = mix(n01, n11, u.x);
+  float n = mix(nx, ny, u.y);
+  return clamp(n * 0.65 + 0.5, 0.0, 1.0);
+}
+
+float colorwayFbm(vec2 p, float offsetX) {
+  float per = clamp(u_colorwayNoisePersistence, 0.15, 0.95);
+  float lac = clamp(u_colorwayNoiseLacunarity, 1.05, 4.0);
+  float oct = clamp(floor(u_colorwayNoiseOctaves + 0.01), 1.0, 4.0);
+  float sum = 0.0;
+  float amp = 0.5;
+  float norm = 0.0;
+  float freq = 1.0;
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float w = step(fi + 0.5, oct);
+    sum += w * amp * colorwayPerlin01(p * freq + vec2(offsetX * freq, 0.0));
+    norm += w * amp;
+    amp *= per;
+    freq *= lac;
+  }
+  return sum / max(norm, 1e-4);
+}
+
+float colorwayIncludeCount() {
+  return u_colorwayInclude0123.x + u_colorwayInclude0123.y + u_colorwayInclude0123.z + u_colorwayInclude0123.w + u_colorwayInclude4;
+}
+
+float colorwayPickFromU(float u01) {
+  float n = colorwayIncludeCount();
+  if (n < 0.5) return u_palette;
+  float kk = floor(clamp(u01, 0.0, 1.0 - 1e-5) * n);
+  if (u_colorwayInclude0123.x > 0.5) { if (kk < 0.5) return 0.0; kk -= 1.0; }
+  if (u_colorwayInclude0123.y > 0.5) { if (kk < 0.5) return 1.0; kk -= 1.0; }
+  if (u_colorwayInclude0123.z > 0.5) { if (kk < 0.5) return 2.0; kk -= 1.0; }
+  if (u_colorwayInclude0123.w > 0.5) { if (kk < 0.5) return 3.0; kk -= 1.0; }
+  if (u_colorwayInclude4 > 0.5) { if (kk < 0.5) return 4.0; }
+  return u_palette;
+}
+
+float colorwayQuantize(float tRaw) {
+  float b = max(0.08, min(4.0, u_colorwayNoiseBias));
+  float t = pow(clamp(tRaw, 0.0, 1.0), b);
+  return colorwayPickFromU(t);
+}
+
+float mosaicCellPalette(vec2 cellID, float isWeft) {
+  if (u_useAllColorways < 0.5) return u_palette;
+  float scale = max(0.001, u_colorwayNoiseScale);
+  vec2 seedOff = vec2(u_colorwaySeed * 0.103511, u_colorwaySeed * 0.097369);
+  float xMicro = u_colorwayNoiseX * 0.04;
+  float mode = u_colorwayNoiseMode;
+  if (mode < 0.5) {
+    return colorwayPickFromU(colorwayHash(cellID * scale + vec2(u_colorwaySeed + xMicro, 0.0)));
+  }
+  if (mode < 1.5) {
+    vec2 p = cellID.xy * scale + seedOff;
+    return colorwayQuantize(colorwayFbm(p, xMicro));
+  }
+  float ani = max(0.35, min(12.0, u_colorwayBleedAnisotropy));
+  float ang = u_colorwayBleedRotation * 6.28318530718;
+  float co = cos(ang);
+  float si = sin(ang);
+  vec2 rc = vec2(co * cellID.x - si * cellID.y, si * cellID.x + co * cellID.y);
+  vec2 pRot = vec2(rc.x * ani, rc.y / ani) * scale + seedOff;
+  float tStrip = colorwayFbm(pRot, xMicro);
+  vec2 pH = vec2(cellID.x * ani, cellID.y / ani) * scale + seedOff;
+  vec2 pV = vec2(cellID.x / ani, cellID.y * ani) * scale + seedOff;
+  float tH = colorwayFbm(pH, xMicro);
+  float tV = colorwayFbm(pV, xMicro);
+  float tMix = mix(tH, tV, isWeft);
+  float tDraft = u_colorwayBleedDraftCoupled > 0.5 ? tMix : tStrip;
+  vec2 pIso = cellID.xy * scale + seedOff + vec2(17.13, 23.71);
+  float tIso = colorwayFbm(pIso, xMicro);
+  float xf = clamp(u_colorwayBleedCrossFiber, 0.0, 1.0);
+  float tBleed = mix(tDraft, tIso, xf);
+  return colorwayQuantize(tBleed);
 }
 
 // --- ROUNDED RECTANGLE SDF (from original fragment.glsl) ---
@@ -288,11 +408,26 @@ float stitchRevealOrderBleed(vec2 cellID, float isWeft) {
   return mix(tDraft, tIso, xf);
 }
 
+vec4 mosaicBackgroundColor() {
+  return u_bgUseCustom > 0.5
+    ? vec4(clamp(u_bgCustomColor, 0.0, 1.0), 1.0)
+    : getPaletteColor(u_palette, u_bgShade);
+}
+
 void main() {
+  // --- CONTENT PADDING: outer band uses background only (no image / mosaic) ---
+  vec2 uvNorm = gl_FragCoord.xy / u_resolution;
+  float pad = clamp(u_contentPadding, 0.0, 0.45);
+  float inner = max(1.0 - 2.0 * pad, 0.01);
+  if (pad > 0.0001 && (uvNorm.x < pad || uvNorm.x > 1.0 - pad || uvNorm.y < pad || uvNorm.y > 1.0 - pad)) {
+    gl_FragColor = mosaicBackgroundColor();
+    return;
+  }
+  vec2 contentNorm = pad > 0.0001 ? (uvNorm - pad) / inner : uvNorm;
+
   // --- GRID SETUP (same as original) ---
-  vec2 uv = gl_FragCoord.xy / u_resolution;
   float aspect = u_resolution.x / u_resolution.y;
-  uv.x *= aspect;
+  vec2 uv = vec2(contentNorm.x * aspect, contentNorm.y);
 
   float gridSize = clamp(u_gridSize, 2.0, 256.0);
   vec2 gridUV = uv * gridSize;
@@ -309,10 +444,11 @@ void main() {
   // --- RECT COLOR: image vs brand vs binary weave (two palette shades) ---
   vec4 rectVec;
   float isWeft = getPatternFromTexture(cellID.y, cellID.x);
+  float cellPalette = mosaicCellPalette(cellID, isWeft);
   if (u_rectColorSource > 1.5) {
     // Pattern colors only: warp vs weft → two shades (independent of image hue).
     float shadePick = isWeft > 0.5 ? u_patternWeftShade : u_patternWarpShade;
-    rectVec = getPaletteColor(u_palette, shadePick);
+    rectVec = getPaletteColor(cellPalette, shadePick);
   } else if (u_rectColorSource > 0.5) {
     rectVec = vec4(quantized, 1.0);
   } else {
@@ -332,7 +468,7 @@ void main() {
       float t = (warpT + weftT) * 0.5;
       shade = clamp(floor(t * 5.0), 0.0, 4.0);
     }
-    rectVec = getPaletteColor(u_palette, shade);
+    rectVec = getPaletteColor(cellPalette, shade);
   }
 
   // --- ROUNDED RECT: orient by weave (same as v1). Size from luminance × u_rectRatio. ---
@@ -368,9 +504,7 @@ void main() {
   cell *= revealMul;
 
   // --- COLORING (same as original: palette + bg shade for background). Supports transparent. ---
-  vec4 bgVec = u_bgUseCustom > 0.5
-    ? vec4(clamp(u_bgCustomColor, 0.0, 1.0), 1.0)
-    : getPaletteColor(u_palette, u_bgShade);
+  vec4 bgVec = mosaicBackgroundColor();
 
   vec4 outColor;
   if (u_rectColorSource > 2.5) {
@@ -414,8 +548,9 @@ void main() {
       revealMulTile = smoothstep(orderT - soft, orderT + soft, u_stitchRevealProgress);
     }
     occupied *= revealMulTile;
-    vec4 warpCol = getPaletteColor(u_palette, u_patternWarpShade);
-    vec4 weftCol = getPaletteColor(u_palette, u_patternWeftShade);
+    float cellPaletteTile = mosaicCellPalette(cellID, isWeftTile);
+    vec4 warpCol = getPaletteColor(cellPaletteTile, u_patternWarpShade);
+    vec4 weftCol = getPaletteColor(cellPaletteTile, u_patternWeftShade);
     vec4 stitchCol;
     if (u_tileArtColorMode < 1.5) {
       stitchCol = isWeftTile > 0.5 ? weftCol : warpCol;

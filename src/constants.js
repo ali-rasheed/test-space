@@ -3,14 +3,11 @@
  * Single source of truth for weaving presets and shared numeric constants.
  */
 
-/** Copy-to-clipboard resolution options (scale × display size). Used for all views (v1–v4). */
-export const COPY_SCALES = [1, 2, 4, 8];
+/** Image copy/download resolution options (scale × display size). Used for all views (v1–v4). */
+export const COPY_SCALES = [1, 2, 4, 8, 12];
 
 /** Device pixel ratio used for weaving canvas (useShaderSandbox). Export uses this to compute display size. */
 export const WEAVING_DPR = 2;
-
-/** Scale factors for Export PNG (download). Larger = higher resolution file. */
-export const EXPORT_SCALES = [2, 4, 8, 12];
 
 /** Max pixels per side for export (toBlob can fail on very large canvases). Aspect ratio preserved when capping. */
 export const EXPORT_MAX_DIMENSION = 8000;

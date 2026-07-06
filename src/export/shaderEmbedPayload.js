@@ -125,7 +125,7 @@ export function buildShaderEmbedPayload(options) {
     u_weftStartPos: clamp(Math.min(Number(weftRange[0]) || 0, Number(weftRange[1]) || 100) / 100, 0, 1),
     u_weftEndPos: clamp(Math.max(Number(weftRange[0]) || 0, Number(weftRange[1]) || 100) / 100, 0, 1),
     u_gradSteps: Number(state.gradSteps) || 0,
-    u_revealStartTime: 0,
+    u_revealProgress: 1,
     u_rectAspect: Number(state.rectAspect),
     u_cornerRadius: Number(state.cornerRadius),
     u_stageTranslateX: Math.round(Number(stageTranslateX) || 0),

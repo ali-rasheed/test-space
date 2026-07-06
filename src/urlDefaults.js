@@ -6,7 +6,7 @@ import { RECT_ASPECT_DEFAULT } from './constants';
 
 export const WEAVING_URL_DEFAULTS = {
   view: 'weaving',
-  menuHidden: true,
+  menuHidden: false,
   pattern: 0,
   palette: 0,
   bgShade: 2,
@@ -24,7 +24,6 @@ export const WEAVING_URL_DEFAULTS = {
   weaveEnsMarkVisible: true,
   copyFormat: 'png',
   copyScale: 2,
-  exportScale: 6,
   useAllColorways: true,
   colorwaySeed: 78.2,
   colorwayNoiseScale: 0.005,
@@ -73,9 +72,12 @@ export const WEAVING_URL_DEFAULTS = {
   weaveStitchRevealBleedDraftCoupled: 0,
   /** When true, stitch-in progress is manual / keyframe A↔B; when false, timed duration ramp (default). URL `srkm`. */
   weaveStitchRevealKeyframeDrive: false,
+  /** Diagonal load-in on Weave (0 = wave start, 1 = fully revealed). */
+  diagonalRevealProgress: 1,
 };
 
 export const IMAGE_RECTS_URL_DEFAULTS = {
+  menuHidden: false,
   gridSize: 32,
   palette: 0,
   bgShade: 2,
@@ -125,6 +127,8 @@ export const IMAGE_RECTS_URL_DEFAULTS = {
   mosaicBgGaps: false,
   /** Mosaic canvas: 'fit' = contain in stage, 'fill' = grow to fill main area. */
   patternFit: 'fit',
+  /** Outer inset per edge (0–0.45): background band; mosaic samples inner rect only (URL cpad). */
+  contentPadding: 0,
   stageTranslateX: 0,
   /** 0 = off, 1 = noise (FBM), 2 = dye-bleed stitch-in from blank. */
   stitchRevealMode: 0,

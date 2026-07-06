@@ -72,8 +72,8 @@ uniform float u_colorwayBleedDraftCoupled; // 1 = streak along warp vs weft from
 uniform vec4 u_colorwayInclude0123;
 uniform float u_colorwayInclude4;
 
-// Reveal animation: time when current wave started (resets on pattern change)
-uniform float u_revealStartTime;
+// Diagonal load-in: 0 = wave at start, 1 = fully revealed (scrubbable from JS)
+uniform float u_revealProgress;
 // Rect aspect: width/height in cell space (halfX/halfY). Spec 36×40 → 0.9. Kept ≤1 so rects fit in cell (no clipping).
 uniform float u_rectAspect;
 uniform float u_cornerRadius;     // Rounded rect corner radius in cell space (~0.18 ≈ 6/40)
@@ -489,9 +489,10 @@ void main() {
     vec4 inRectVec = threadVec.a > 0.001 ? threadVec : vec4(bgVec.rgb, 1.0);
 
     // --- ANIMATION ---
-    // Weave-in reveal: diagonal wave on load and when pattern changes (u_revealStartTime resets in JS).
+    // Weave-in reveal: diagonal wave on load and when pattern changes; u_revealProgress scrubs 0→1.
     float speed = 2.0 * gridSize / 1.8;
-    float elapsed = u_time - u_revealStartTime;
+    float maxDiag = gridSize * aspect + gridSize;
+    float elapsed = u_revealProgress * (maxDiag + 1.0) / speed;
     float wave = (cellID.x + cellID.y) - elapsed * speed;  // Diagonal coord; wave front advances as elapsed grows
     float reveal = smoothstep(1.0, 0.0, wave);            // 1 ahead of wave, 0 behind
 

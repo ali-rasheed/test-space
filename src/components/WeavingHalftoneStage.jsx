@@ -98,6 +98,7 @@ export function WeavingHalftoneStage({
   weaveStitchRevealBleedRotation = WEAVING_URL_DEFAULTS.weaveStitchRevealBleedRotation,
   weaveStitchRevealBleedCrossFiber = WEAVING_URL_DEFAULTS.weaveStitchRevealBleedCrossFiber,
   weaveStitchRevealBleedDraftCoupled = WEAVING_URL_DEFAULTS.weaveStitchRevealBleedDraftCoupled,
+  diagonalRevealProgress,
   stageTranslateX = 0,
   weaveEnsMarkVisible = WEAVING_URL_DEFAULTS.weaveEnsMarkVisible,
   // Halftone params
@@ -324,6 +325,7 @@ export function WeavingHalftoneStage({
           weaveStitchRevealBleedRotation={weaveStitchRevealBleedRotation}
           weaveStitchRevealBleedCrossFiber={weaveStitchRevealBleedCrossFiber}
           weaveStitchRevealBleedDraftCoupled={!!weaveStitchRevealBleedDraftCoupled}
+          diagonalRevealProgress={diagonalRevealProgress}
           stageTranslateX={stageTranslateX}
           weaveEnsMarkVisible={weaveEnsMarkVisible}
           patterns={patterns ?? []}

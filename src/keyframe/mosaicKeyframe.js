@@ -47,6 +47,7 @@ export const MOSAIC_KEYFRAME_KEYS = [
   'rectAspect',
   'rectRatio',
   'patternFit',
+  'contentPadding',
 ];
 
 export function getMosaicKeyframeSnapshot(state) {
@@ -107,4 +108,5 @@ export function applyMosaicKeyframe(setters, snap) {
   if (snap.rectAspect != null) setters.setRectAspect?.(f(snap.rectAspect, 0.3, 1.5));
   if (snap.rectRatio != null) setters.setRectRatio?.(f(snap.rectRatio, 0.2, 1));
   if (snap.patternFit === 'fit' || snap.patternFit === 'fill') setters.setPatternFit?.(snap.patternFit);
+  if (snap.contentPadding != null) setters.setContentPadding?.(f(snap.contentPadding, 0, 0.45));
 }

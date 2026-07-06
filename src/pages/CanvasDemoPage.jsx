@@ -2,8 +2,10 @@
  * CanvasDemoPage — Weave canvas feature gallery (one live preview at a time).
  * Specimen list + single ShaderCanvas / WeavingHalftoneStage avoids WebGL context limits.
  * URL: `section`, `spec`, `shp`, `cwp` (same play hints as main app).
+ * Last session persists in localStorage (`shaderbox-canvas-demo-v1`); a load prompt appears on
+ * mount when the saved snapshot differs from the URL/default initial state.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PRESETS } from '../constants';
 import { ShaderCanvas } from '../components/ShaderCanvas';
 import { WeavingHalftoneStage } from '../components/WeavingHalftoneStage';
@@ -18,6 +20,12 @@ import {
   parseCanvasDemoUrl,
   replaceCanvasDemoUrl,
 } from '../canvasDemoUrl';
+import {
+  canvasDemoStoredStatesEqual,
+  readStoredCanvasDemoState,
+  snapshotCanvasDemoState,
+  writeStoredCanvasDemoState,
+} from '../canvasDemoStorage';
 import {
   btnGhost,
   iconPlayGlyph,
@@ -261,6 +269,9 @@ export default function CanvasDemoPage() {
   const [activeSectionId, setActiveSectionId] = useState(initialUrl.sectionId);
   const [activeSpecId, setActiveSpecId] = useState(initialUrl.specId);
   const [shimmerPlaying, setShimmerPlaying] = useState(initialUrl.shimmerPlaying);
+  const storedOnLoadRef = useRef(readStoredCanvasDemoState(DEMO_SECTIONS));
+  const [loadPromptDismissed, setLoadPromptDismissed] = useState(false);
+  const [colorwayUrlApplied, setColorwayUrlApplied] = useState(initialUrl.colorwayPlayBits == null);
 
   const colorway = useColorwayState();
   const {
@@ -388,12 +399,59 @@ export default function CanvasDemoPage() {
   ]);
 
   useEffect(() => {
-    if (initialUrl.colorwayPlayBits == null) return;
+    if (initialUrl.colorwayPlayBits == null) {
+      setColorwayUrlApplied(true);
+      return;
+    }
     setColorwayAnimPlaying({
       ...COLORWAY_ANIM_INITIAL,
       ...decodeColorwayAnimBitsToPartial(initialUrl.colorwayPlayBits),
     });
+    setColorwayUrlApplied(true);
   }, [initialUrl.colorwayPlayBits, setColorwayAnimPlaying]);
+
+  const liveSnapshot = useMemo(
+    () =>
+      snapshotCanvasDemoState({
+        sectionId: activeSectionId,
+        specId: activeSpecId,
+        shimmerPlaying,
+        colorwayAnimPlaying,
+      }),
+    [activeSectionId, activeSpecId, shimmerPlaying, colorwayAnimPlaying],
+  );
+
+  const showLoadPrompt =
+    colorwayUrlApplied
+    && !loadPromptDismissed
+    && storedOnLoadRef.current != null
+    && !canvasDemoStoredStatesEqual(storedOnLoadRef.current, liveSnapshot);
+
+  const handleLoadStoredSettings = () => {
+    const stored = storedOnLoadRef.current;
+    if (!stored) return;
+    setActiveSectionId(stored.sectionId);
+    setActiveSpecId(stored.specId);
+    setShimmerPlaying(stored.shimmerPlaying);
+    if (stored.colorwayPlayBits != null) {
+      setColorwayAnimPlaying({
+        ...COLORWAY_ANIM_INITIAL,
+        ...decodeColorwayAnimBitsToPartial(stored.colorwayPlayBits),
+      });
+    } else {
+      setColorwayAnimPlaying({ ...COLORWAY_ANIM_INITIAL });
+    }
+    setLoadPromptDismissed(true);
+  };
+
+  useEffect(() => {
+    if (!colorwayUrlApplied) return;
+    const stored = storedOnLoadRef.current;
+    if (stored && !loadPromptDismissed && !canvasDemoStoredStatesEqual(stored, liveSnapshot)) {
+      return;
+    }
+    writeStoredCanvasDemoState(liveSnapshot);
+  }, [liveSnapshot, loadPromptDismissed, colorwayUrlApplied]);
 
   useEffect(() => {
     if (!activeSection.specs.some((s) => s.id === activeSpecId)) {
@@ -426,6 +484,29 @@ export default function CanvasDemoPage() {
           </a>
         </div>
       </header>
+
+      {showLoadPrompt ? (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-elevated px-4 py-2"
+          role="status"
+        >
+          <span className={`${typeLabel} text-text-muted`}>Restore your last specimen and play settings?</span>
+          <button
+            type="button"
+            className={`${toggleBtn} ${toggleBtnActive}`}
+            onClick={handleLoadStoredSettings}
+          >
+            Load last settings
+          </button>
+          <button
+            type="button"
+            className={btnGhost}
+            onClick={() => setLoadPromptDismissed(true)}
+          >
+            Keep current
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2">
         <span className={typeLabel}>Output</span>
