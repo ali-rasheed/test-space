@@ -317,7 +317,8 @@ function parseUrlState(search) {
   const display = params.get('display');
   if (display === 'fill' || display === 'fit') out.patternFit = display;
   const menu = params.get('menu');
-  if (menu === '1') out.menuHidden = false; // menu=1 → sidebar always visible
+  if (menu === '1') out.menuHidden = false;
+  else if (menu === '0') out.menuHidden = true;
   const kad = params.get('kad');
   if (kad != null) {
     const n = Number(kad);
@@ -478,7 +479,7 @@ function buildUrlState(state) {
   if (state.comboRectRadius !== COMBO_DEFAULTS.rectRadius) p.set('crr', String(Number(state.comboRectRadius.toFixed(2))));
   if (state.comboRectAspect !== COMBO_DEFAULTS.rectAspect) p.set('cra', String(Number(state.comboRectAspect.toFixed(2))));
   if (state.comboRectRatio !== COMBO_DEFAULTS.rectRatio) p.set('cratio', String(Number(state.comboRectRatio.toFixed(2))));
-  if (state.menuHidden === false) p.set('menu', '1');
+  if (state.menuHidden !== def.menuHidden) p.set('menu', state.menuHidden ? '0' : '1');
   const kd =
     state.keyframeAnimDurationSec != null && Number.isFinite(state.keyframeAnimDurationSec)
       ? state.keyframeAnimDurationSec
@@ -568,7 +569,7 @@ export default function App() {
   const [view, setView] = useState(getInitialView); // 'weaving' | 'imageRects' | 'imageRectsHalftone' — URL ?v=1–4 (+ legacy 5/6 → mosaic)
   const [weaveHalftoneOn, setWeaveHalftoneOn] = useState(getInitialWeaveHalftone);
   /** When true, sidebar is hidden until hover (v1–v5); when false, sidebar is always visible. Toggle in nav; persisted in URL ?menu=1. */
-  const [menuHidden, setMenuHidden] = useState(true);
+  const [menuHidden, setMenuHidden] = useState(WEAVING_URL_DEFAULTS.menuHidden);
   const [presetIndex, setPresetIndex] = useState(null); // null = custom
   const [pattern, setPattern] = useState(WEAVING_URL_DEFAULTS.pattern);
   const [palette, setPalette] = useState(WEAVING_URL_DEFAULTS.palette);
@@ -874,7 +875,7 @@ export default function App() {
     if (q.comboRectRatio != null) setComboRectRatio(q.comboRectRatio);
     if (q.view != null) setView(q.view);
     if (q.weaveHalftoneOn != null) setWeaveHalftoneOn(!!q.weaveHalftoneOn);
-    if (q.menuHidden === false) setMenuHidden(false);
+    if (q.menuHidden != null) setMenuHidden(q.menuHidden);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; applyPreset is stable
   }, []);
 

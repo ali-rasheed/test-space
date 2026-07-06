@@ -378,7 +378,7 @@ function buildUrlStateV2(state) {
   if (state.rectRatio !== def.rectRatio) p.set('rratio', String(Number(state.rectRatio.toFixed(2))));
   if (state.copyFormat !== def.copyFormat) p.set('cf', state.copyFormat);
   if (state.copyScale !== def.copyScale) p.set('cs', String(state.copyScale));
-  if (state.menuHidden === false) p.set('menu', '1');
+  if (state.menuHidden !== def.menuHidden) p.set('menu', state.menuHidden ? '0' : '1');
   if (state.mosaicBgGaps === true) p.set('gap', '1');
   if (state.patternFit != null && state.patternFit !== def.patternFit) p.set('display', state.patternFit);
   if (state.contentPadding !== def.contentPadding) p.set('cpad', String(Math.round(state.contentPadding * 100)));
@@ -447,7 +447,7 @@ function buildUrlStateV2(state) {
  * patternFit + onPatternFitChange: optional controlled viewport (e.g. Fit/Fill in App.jsx nav); when set, sidebar Viewport block is omitted.
  */
 export default function AppV2({
-  menuHidden = true,
+  menuHidden = false,
   viewTitle = 'Mosaic',
   patternFit: patternFitProp = IMAGE_RECTS_URL_DEFAULTS.patternFit,
   onPatternFitChange,

@@ -6,7 +6,7 @@ import { RECT_ASPECT_DEFAULT } from './constants';
 
 export const WEAVING_URL_DEFAULTS = {
   view: 'weaving',
-  menuHidden: true,
+  menuHidden: false,
   pattern: 0,
   palette: 0,
   bgShade: 2,

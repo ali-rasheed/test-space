@@ -82,7 +82,7 @@ There are no global shortcuts today for **randomize**, **reset**, **record**, **
 
 **`?gap=1`** — background gaps (non-stitch shows BG); **`gap=0`** explicit off.
 
-**`?menu=1`** — sidebar always visible (vs hover-reveal overlay).
+**`?menu=0`** — sidebar hover-reveal (hidden until hover). Default (no param) = always visible. Legacy **`?menu=1`** still forces always visible.
 
 **`?display=fit|fill`** — **Fit** = contain (full canvas visible, letterboxed); **Fill** = cover (scale until the shorter stage dimension is filled, may crop). Same semantics on **Weave** (`ShaderCanvas`), **Mosaic** (`ImageRectsCanvas`), and halftone views (`HalftoneCmyk` `fit`).
 
