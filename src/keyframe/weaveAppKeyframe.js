@@ -20,6 +20,7 @@ const WEAVE_CORE_KEYS = [
   'weaveStitchRevealMode', 'weaveStitchRevealDurationSec', 'weaveStitchRevealProgress', 'weaveStitchRevealSeed',
   'weaveStitchRevealScale', 'weaveStitchRevealNoiseScale', 'weaveStitchRevealSoftness', 'weaveStitchRevealBleedAnisotropy', 'weaveStitchRevealBleedRotation',
   'weaveStitchRevealBleedCrossFiber', 'weaveStitchRevealBleedDraftCoupled',
+  'diagonalRevealProgress',
   'weaveEnsMarkVisible',
 ];
 
@@ -121,6 +122,9 @@ export function applyWeaveAppKeyframe(view, weaveHalftoneOn, setters, snap) {
     if (snap.weaveStitchRevealBleedCrossFiber != null) setters.setWeaveStitchRevealBleedCrossFiber?.(clamp(Number(snap.weaveStitchRevealBleedCrossFiber), 0, 1));
     if (snap.weaveStitchRevealBleedDraftCoupled != null) {
       setters.setWeaveStitchRevealBleedDraftCoupled?.(snap.weaveStitchRevealBleedDraftCoupled ? 1 : 0);
+    }
+    if (snap.diagonalRevealProgress != null) {
+      setters.setDiagonalRevealProgress?.(clamp(Number(snap.diagonalRevealProgress), 0, 1));
     }
   };
 
