@@ -6,7 +6,7 @@
   "scripts": {
     "check": "eslint src --max-warnings 0",
     "test": "vitest run",
-    "dev": "npm run check && vite",
+    "dev": "vite",
     "dev:ds": "vite --open /design-system.html",
     "dev:canvas": "vite --open /canvas-demo.html",
     "devp": "portless shaderbox vite",
