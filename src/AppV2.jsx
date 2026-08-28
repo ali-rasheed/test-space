@@ -27,7 +27,7 @@ import {
 } from './patterns/tileArtRamp';
 import { AppTooltip } from './components/ui/AppTooltip';
 import { GRID_SNAPS, getGridSizeIndex, URL_STATE_MAX_LEN, WEAVE_ICONS } from './constants';
-import { IMAGE_RECTS_URL_DEFAULTS, HALFTONE_DEFAULTS, HALFTONE_PAPER, KEYFRAME_ANIM_DEFAULT_SEC } from './urlDefaults';
+import { IMAGE_RECTS_URL_DEFAULTS, HALFTONE_DEFAULTS, KEYFRAME_ANIM_DEFAULT_SEC } from './urlDefaults';
 import {
   applyHalftonePaperPreset,
   halftonePaperModeFromValues,
