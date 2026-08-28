@@ -197,6 +197,15 @@ export const PATTERNS = [
     // 1=weft on top. Row order bottom→top: solid, then 9,6,9,6,9,6,9,6, solid.
     rows: [15, 9, 6, 9, 6, 9, 6, 9, 6, 15].map((v) => row8(v)),
   },
+  // Weftwise-elongated 2/2 (stair-step): classic 2/2 picks doubled vertically → 4×8
+  {
+    id: 'stair-step-2-2',
+    name: 'Stair-Step 2/2 Twill',
+    tileW: 4,
+    tileH: 8,
+    // Same polarity as twill-2-2 (3,6,12,9) with each pick repeated twice.
+    rows: [3, 3, 6, 6, 12, 12, 9, 9].map((v) => row8(v)),
+  },
 ];
 
 /** Build a texture image: width TILE_MAX, height TILE_MAX * patterns.length. Each pixel R = 0 or 255. */

@@ -32,6 +32,7 @@ export const WEAVE_ICONS = {
   'pattern-738': 'dashboard',
   'ens-vertical-pairs': 'view_column',
   'curtain': 'vertical_split',
+  'stair-step-2-2': 'stairs',
 };
 
 /** Flat gradient = same start/end shade (solid). */

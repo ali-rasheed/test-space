@@ -9,6 +9,27 @@ import {
 } from './index.js';
 import { buildComplexityOrderedPatternIndices, normalizeTileArtRamp } from './tileArtRamp.js';
 
+describe('stair-step-2-2', () => {
+  const idx = PATTERNS.findIndex((p) => p.id === 'stair-step-2-2');
+
+  it('is registered as elongated 2/2 (4×8)', () => {
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const pat = PATTERNS[idx];
+    expect(pat.name).toBe('Stair-Step 2/2 Twill');
+    expect(pat.tileW).toBe(4);
+    expect(pat.tileH).toBe(8);
+    expect(isPatternEnabled(pat)).toBe(true);
+    // Doubled classic 2/2 polarity: 3,6,12,9 each twice
+    expect(pat.rows.map((r) => r.slice(0, 4).reduce((a, b, i) => a + (b << i), 0))).toEqual([
+      3, 3, 6, 6, 12, 12, 9, 9,
+    ]);
+  });
+
+  it('appears in pattern select options', () => {
+    expect(buildPatternSelectOptions(PATTERNS).some((o) => o.value === idx)).toBe(true);
+  });
+});
+
 describe('disabled patterns', () => {
   const irregularIdx = PATTERNS.findIndex((p) => p.id === 'weft-rib-irregular');
 
