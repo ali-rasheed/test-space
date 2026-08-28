@@ -241,6 +241,11 @@ function parseUrlState(search) {
   const srkm = params.get('srkm');
   if (srkm === '1') out.weaveStitchRevealKeyframeDrive = true;
   else if (srkm === '0') out.weaveStitchRevealKeyframeDrive = false;
+  const drp = params.get('drp');
+  if (drp != null) {
+    const n = Number(drp);
+    if (Number.isFinite(n)) out.diagonalRevealProgress = Math.max(0, Math.min(1, n / 1000));
+  }
   num('hp', 'halftonePresetIndex', 0, halftoneCmykPresets.length - 1);
   num('hs', 'halftoneSize', 0.01, 1);
   num('hsoft', 'halftoneSoftness', 0, 1);
@@ -409,6 +414,9 @@ function buildUrlState(state) {
   if (state.weaveStitchRevealBleedCrossFiber !== def.weaveStitchRevealBleedCrossFiber) p.set('srbc', String(Math.round(state.weaveStitchRevealBleedCrossFiber * 1000)));
   if (state.weaveStitchRevealBleedDraftCoupled !== def.weaveStitchRevealBleedDraftCoupled) p.set('srbd', state.weaveStitchRevealBleedDraftCoupled ? '1' : '0');
   if (!!state.weaveStitchRevealKeyframeDrive !== !!def.weaveStitchRevealKeyframeDrive) p.set('srkm', state.weaveStitchRevealKeyframeDrive ? '1' : '0');
+  if (state.diagonalRevealProgress !== def.diagonalRevealProgress) {
+    p.set('drp', String(Math.round(state.diagonalRevealProgress * 1000)));
+  }
   if (state.shimmer !== def.shimmer) p.set('shimmer', state.shimmer ? '1' : '0');
   if (state.shimmerSpeed !== def.shimmerSpeed) p.set('shimmerSp', String(Math.round(state.shimmerSpeed)));
   if (state.shimmerWidth !== def.shimmerWidth) p.set('shimmerW', String(Number(state.shimmerWidth.toFixed(2))));
@@ -669,6 +677,7 @@ export default function App() {
   /** Diagonal load-in wave (0 = start, 1 = fully woven); auto-plays on load / pattern change. */
   const [diagonalRevealProgress, setDiagonalRevealProgress] = useState(0);
   const diagonalRevealAnimRafRef = useRef(0);
+  const diagonalRevealSkipNextAutoRef = useRef(false);
   /** Copy format: 'png' or 'webp'; copyScale: 1, 2, 4, 8, or 12× display size (copy + download). */
   const [copyFormat, setCopyFormat] = useState(WEAVING_URL_DEFAULTS.copyFormat);
   const [copyScale, setCopyScale] = useState(WEAVING_URL_DEFAULTS.copyScale);
@@ -828,6 +837,10 @@ export default function App() {
     if (q.weaveStitchRevealBleedCrossFiber != null) setWeaveStitchRevealBleedCrossFiber(q.weaveStitchRevealBleedCrossFiber);
     if (q.weaveStitchRevealBleedDraftCoupled != null) setWeaveStitchRevealBleedDraftCoupled(q.weaveStitchRevealBleedDraftCoupled);
     if (q.weaveStitchRevealKeyframeDrive != null) setWeaveStitchRevealKeyframeDrive(!!q.weaveStitchRevealKeyframeDrive);
+    if (q.diagonalRevealProgress != null) {
+      setDiagonalRevealProgress(q.diagonalRevealProgress);
+      diagonalRevealSkipNextAutoRef.current = true;
+    }
     if (q.shimmer != null) setShimmer(!!q.shimmer);
     if (q.shimmerSpeed != null) setShimmerSpeed(Math.min(16, Math.max(1, Number(q.shimmerSpeed))));
     if (q.shimmerWidth != null) setShimmerWidth(q.shimmerWidth);
@@ -1055,6 +1068,7 @@ export default function App() {
       comboRectAspect,
       comboRectRatio,
       weaveEnsMarkVisible,
+      diagonalRevealProgress,
     }),
     [
       pattern,
@@ -1143,6 +1157,7 @@ export default function App() {
       comboRectAspect,
       comboRectRatio,
       weaveEnsMarkVisible,
+      diagonalRevealProgress,
     ],
   );
 
@@ -1214,6 +1229,7 @@ export default function App() {
     setWeaveStitchRevealBleedRotation,
     setWeaveStitchRevealBleedCrossFiber,
     setWeaveStitchRevealBleedDraftCoupled,
+    setDiagonalRevealProgress,
     setHalftonePresetIndex,
     setHalftoneSize,
     setHalftoneSoftness,
@@ -1289,12 +1305,13 @@ export default function App() {
       stitchRevealMode: weaveStitchRevealMode,
       stitchRevealKeyframeDrive: weaveStitchRevealKeyframeDrive,
       stitchRevealProgress: weaveStitchRevealProgress,
+      diagonalRevealProgress,
       inferState: weaveKeyframeState,
     }),
     [
       weaveKeyframePlaying, shimmer, shimmerPlaying, useAllColorways, colorwayAnimPlaying,
       weaveStitchRevealMode, weaveStitchRevealKeyframeDrive,
-      weaveStitchRevealProgress, weaveKeyframeState,
+      weaveStitchRevealProgress, diagonalRevealProgress, weaveKeyframeState,
     ],
   );
 
@@ -1334,6 +1351,7 @@ export default function App() {
         warpGradient, weftGradient, warpGradientEnabled, weftGradientEnabled, gradSteps, rectAspect, cornerRadius, canvasAspect, patternFit, copyFormat, copyScale,
         useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask,
         weaveStitchRevealMode, weaveStitchRevealDurationSec, weaveStitchRevealKeyframeDrive, weaveStitchRevealSeed, weaveStitchRevealScale, weaveStitchRevealNoiseScale, weaveStitchRevealSoftness, weaveStitchRevealBleedAnisotropy, weaveStitchRevealBleedRotation, weaveStitchRevealBleedCrossFiber, weaveStitchRevealBleedDraftCoupled,
+        diagonalRevealProgress,
         colorwayAnimPlaying,
         shimmer, shimmerPlaying, shimmerSpeed, shimmerWidth, shimmerIntensity, shimmerPosition, shimmerRotation, shimmerNoise, shimmerNoiseSeed, shimmerNoiseMin, shimmerNoiseMax, shimmerBlendMode,
         halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType,
@@ -1350,7 +1368,7 @@ export default function App() {
       }
     }, 400);
     return () => { clearTimeout(urlSyncTimeoutRef.current); };
-  }, [view, weaveHalftoneOn, menuHidden, presetIndex, pattern, palette, bgShade, warpShade, weftShade, gridSize, weaveEnsMarkVisible, weaveKeyframePlaying, warpGradient, weftGradient, warpGradientEnabled, weftGradientEnabled, gradSteps, rectAspect, cornerRadius, canvasAspect, patternFit, copyFormat, copyScale, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, colorwayAnimPlaying, weaveStitchRevealMode, weaveStitchRevealDurationSec, weaveStitchRevealKeyframeDrive, weaveStitchRevealSeed, weaveStitchRevealScale, weaveStitchRevealNoiseScale, weaveStitchRevealSoftness, weaveStitchRevealBleedAnisotropy, weaveStitchRevealBleedRotation, weaveStitchRevealBleedCrossFiber, weaveStitchRevealBleedDraftCoupled, shimmer, shimmerPlaying, shimmerSpeed, shimmerWidth, shimmerIntensity, shimmerPosition, shimmerRotation, shimmerNoise, shimmerNoiseSeed, shimmerNoiseMin, shimmerNoiseMax, shimmerBlendMode, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, comboGridSize, comboPalette, comboBgShade, comboRectColorSource, comboQuantizeSteps, comboQuantizeMode, comboQuantizeGamma, comboQuantizeDither, comboPatternIndex, comboPatternWarpShade, comboPatternWeftShade, comboLumaSizeMix, comboLumaSizeInvert, comboLumaSizeFloor, comboCellGeometryMode, comboStitchLumaMax, comboRectRadius, comboRectAspect, comboRectRatio, weaveKeyframeDurationSec, weaveEditingAfter, weaveBefore, weaveAfter]);
+  }, [view, weaveHalftoneOn, menuHidden, presetIndex, pattern, palette, bgShade, warpShade, weftShade, gridSize, weaveEnsMarkVisible, weaveKeyframePlaying, warpGradient, weftGradient, warpGradientEnabled, weftGradientEnabled, gradSteps, rectAspect, cornerRadius, canvasAspect, patternFit, copyFormat, copyScale, useAllColorways, colorwaySeed, colorwayNoiseScale, colorwayNoiseMode, colorwayNoiseOctaves, colorwayNoisePersistence, colorwayNoiseLacunarity, colorwayNoiseBias, colorwayNoiseX, colorwayBleedAnisotropy, colorwayBleedRotation, colorwayBleedCrossFiber, colorwayBleedDraftCoupled, colorwayIncludeMask, colorwayAnimPlaying, weaveStitchRevealMode, weaveStitchRevealDurationSec, weaveStitchRevealKeyframeDrive, weaveStitchRevealSeed, weaveStitchRevealScale, weaveStitchRevealNoiseScale, weaveStitchRevealSoftness, weaveStitchRevealBleedAnisotropy, weaveStitchRevealBleedRotation, weaveStitchRevealBleedCrossFiber, weaveStitchRevealBleedDraftCoupled, diagonalRevealProgress, shimmer, shimmerPlaying, shimmerSpeed, shimmerWidth, shimmerIntensity, shimmerPosition, shimmerRotation, shimmerNoise, shimmerNoiseSeed, shimmerNoiseMin, shimmerNoiseMax, shimmerBlendMode, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, comboGridSize, comboPalette, comboBgShade, comboRectColorSource, comboQuantizeSteps, comboQuantizeMode, comboQuantizeGamma, comboQuantizeDither, comboPatternIndex, comboPatternWarpShade, comboPatternWeftShade, comboLumaSizeMix, comboLumaSizeInvert, comboLumaSizeFloor, comboCellGeometryMode, comboStitchLumaMax, comboRectRadius, comboRectAspect, comboRectRatio, weaveKeyframeDurationSec, weaveEditingAfter, weaveBefore, weaveAfter]);
 
   /** Ramp weave stitch-in 0→1 when Noise/Bleed is on; skipped while keyframe playback drives progress. */
   useEffect(() => {
@@ -1376,6 +1394,10 @@ export default function App() {
   /** Diagonal weave load-in: same timing as before, now scrubbable via sidebar slider. */
   useEffect(() => {
     if (view !== 'weaving') return undefined;
+    if (diagonalRevealSkipNextAutoRef.current) {
+      diagonalRevealSkipNextAutoRef.current = false;
+      return undefined;
+    }
     if (diagonalRevealAnimRafRef.current) {
       cancelAnimationFrame(diagonalRevealAnimRafRef.current);
       diagonalRevealAnimRafRef.current = 0;

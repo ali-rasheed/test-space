@@ -21,6 +21,7 @@ const STITCH_IN_MODES = ['off', 'noise', 'bleed'];
  *   stitchRevealOnRedraw?: boolean,
  *   stitchRevealKeyframeDrive?: boolean,
  *   stitchRevealProgress?: number,
+ *   diagonalRevealProgress?: number,
  *   inferState?: Record<string, unknown>,
  * }} animation
  */
@@ -35,6 +36,7 @@ export function buildAnimationHandoff(tab, animation = {}) {
     stitchRevealOnRedraw = true,
     stitchRevealKeyframeDrive = false,
     stitchRevealProgress = 1,
+    diagonalRevealProgress = 1,
     inferState = {},
   } = animation;
 
@@ -60,6 +62,9 @@ export function buildAnimationHandoff(tab, animation = {}) {
       keyframeDrive: !!stitchRevealKeyframeDrive,
       progress: Math.max(0, Math.min(1, Number(stitchRevealProgress) || 0)),
       configured: stitchMode !== 'off',
+    },
+    diagonalReveal: {
+      progress: Math.max(0, Math.min(1, Number(diagonalRevealProgress) || 0)),
     },
   };
 
