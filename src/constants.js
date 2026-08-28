@@ -117,7 +117,10 @@ export function canvasAspectKey(n) {
 }
 
 /** Designer-friendly grid sizes; slider snaps to these (max 256 cells on the short axis). */
-export const GRID_SNAPS = [8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256];
+export const GRID_SNAPS = [
+  8, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64, 72, 80,
+  96, 112, 128, 160, 192, 224, 256,
+];
 
 /** Index into GRID_SNAPS closest to given size (for slider when size comes from URL). */
 export function getGridSizeIndex(size) {

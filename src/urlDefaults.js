@@ -161,6 +161,23 @@ export const HALFTONE_DEFAULTS = {
   gainY: 0.2,
 };
 
+/** Halftone paper presets: cream (default print) vs clean white (no flood specks). */
+export const HALFTONE_PAPER = {
+  cream: {
+    colorBack: '#fbfaf4',
+    floodC: 0.15,
+    gridNoise: 0.2,
+  },
+  white: {
+    colorBack: '#ffffff',
+    floodC: 0,
+    gridNoise: 0,
+  },
+};
+
+/** URL hbp: 0 = cream (default), 1 = white clean. */
+export const HALFTONE_PAPER_MODES = ['cream', 'white'];
+
 /** Default A→B animation length (seconds); matches `useKeyframePlayback` default. */
 export const KEYFRAME_ANIM_DEFAULT_SEC = 2;
 

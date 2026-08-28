@@ -438,7 +438,9 @@ void main() {
   // Flip texture Y so image matches screen (WebGL tex origin is bottom-left; image upload is often top-down).
   float texX = (cellID.x + 0.5) / (gridSize * aspect);
   float texY = 1.0 - (cellID.y + 0.5) / gridSize;
-  vec3 sampled = texture2D(u_imageSampler, vec2(texX, texY)).rgb;
+  vec4 sampledTex = texture2D(u_imageSampler, vec2(texX, texY));
+  vec3 sampled = sampledTex.rgb;
+  float srcAlpha = sampledTex.a;
   vec3 quantized = quantizeImage(sampled, u_quantizeSteps, u_quantizeMode, u_quantizeGamma, u_quantizeDither, cellID);
 
   // --- RECT COLOR: image vs brand vs binary weave (two palette shades) ---
@@ -502,6 +504,7 @@ void main() {
     revealMul = smoothstep(orderT - soft, orderT + soft, u_stitchRevealProgress);
   }
   cell *= revealMul;
+  cell *= srcAlpha;
 
   // --- COLORING (same as original: palette + bg shade for background). Supports transparent. ---
   vec4 bgVec = mosaicBackgroundColor();
@@ -576,12 +579,14 @@ void main() {
       float stitchMask = 1.0 - smoothstep(-subEdge, subEdge, dSub);
       tileVec = mix(bgVec, stitchCol, stitchMask);
     }
-    if (tileVec.a < 0.001) tileVec = vec4(bgVec.rgb, 1.0);
+    if (tileVec.a < 0.001) tileVec = bgVec;
     float densityMask = 1.0;
     if (u_tileArtDensity > 0.5) {
       float texXSub = (cellID.x + (gCol + 0.5) / geomW) / (gridSize * aspect);
       float texYSub = 1.0 - (cellID.y + (gRow + 0.5) / geomH) / gridSize;
-      vec3 sampledSub = texture2D(u_imageSampler, vec2(texXSub, texYSub)).rgb;
+      vec4 sampledSubTex = texture2D(u_imageSampler, vec2(texXSub, texYSub));
+      vec3 sampledSub = sampledSubTex.rgb;
+      float srcAlphaSub = sampledSubTex.a;
       vec2 subCellKey = cellID + vec2(gCol, gRow) * 0.03125;
       vec3 quantSub = quantizeImage(sampledSub, u_quantizeSteps, u_quantizeMode, u_quantizeGamma, u_quantizeDither, subCellKey);
       float lumSub = dot(quantSub, vec3(0.2126, 0.7152, 0.0722));
@@ -590,12 +595,12 @@ void main() {
       if (u_tileArtDither > 0.001) {
         density = clamp(density + (h - 0.5) * u_tileArtDither, 0.0, 1.0);
       }
-      densityMask = step(h, density);
+      densityMask = step(h, density) * srcAlphaSub;
     }
-    float stitchVisible = occupied * mix(1.0, densityMask, step(0.5, u_tileArtDensity));
+    float stitchVisible = occupied * mix(1.0, densityMask, step(0.5, u_tileArtDensity)) * srcAlpha;
     outColor = mix(bgVec, tileVec, stitchVisible);
   } else {
-    vec4 inRectVec = rectVec.a > 0.001 ? rectVec : vec4(bgVec.rgb, 1.0);
+    vec4 inRectVec = rectVec.a > 0.001 ? rectVec : bgVec;
     outColor = mix(bgVec, inRectVec, cell);
   }
   gl_FragColor = outColor;

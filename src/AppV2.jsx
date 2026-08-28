@@ -27,7 +27,13 @@ import {
 } from './patterns/tileArtRamp';
 import { AppTooltip } from './components/ui/AppTooltip';
 import { GRID_SNAPS, getGridSizeIndex, URL_STATE_MAX_LEN, WEAVE_ICONS } from './constants';
-import { IMAGE_RECTS_URL_DEFAULTS, HALFTONE_DEFAULTS, KEYFRAME_ANIM_DEFAULT_SEC } from './urlDefaults';
+import { IMAGE_RECTS_URL_DEFAULTS, HALFTONE_DEFAULTS, HALFTONE_PAPER, KEYFRAME_ANIM_DEFAULT_SEC } from './urlDefaults';
+import {
+  applyHalftonePaperPreset,
+  halftonePaperModeFromValues,
+  parseHalftonePaperModeParam,
+  serializeHalftonePaperMode,
+} from './halftonePaper';
 import {
   capToMaxDimension,
   pngBlobToFormat,
@@ -337,6 +343,8 @@ function parseUrlStateV2(search) {
       [out.halftoneColorBack, out.halftoneColorC, out.halftoneColorM, out.halftoneColorY, out.halftoneColorK] = colors;
     }
   }
+  const hbp = params.get('hbp');
+  if (hbp != null) out.halftonePaperMode = parseHalftonePaperModeParam(hbp);
   return out;
 }
 
@@ -414,6 +422,8 @@ function buildUrlStateV2(state) {
   if (state.halftoneFloodC !== hdef.floodC) p.set('hfc', String(Number(state.halftoneFloodC.toFixed(2))));
   if (state.halftoneGainC !== hdef.gainC) p.set('hgc', String(Number(state.halftoneGainC.toFixed(2))));
   if (state.halftoneGainY !== hdef.gainY) p.set('hgy', String(Number(state.halftoneGainY.toFixed(2))));
+  const hbpSer = serializeHalftonePaperMode(state.halftonePaperMode);
+  if (hbpSer) p.set('hbp', hbpSer);
   if (
     state.halftoneColorBack !== hdef.colorBack
     || state.halftoneColorC !== hdef.colorC
@@ -524,6 +534,7 @@ export default function AppV2({
   const [halftoneFloodC, setHalftoneFloodC] = useState(HALFTONE_DEFAULTS.floodC);
   const [halftoneGainC, setHalftoneGainC] = useState(HALFTONE_DEFAULTS.gainC);
   const [halftoneGainY, setHalftoneGainY] = useState(HALFTONE_DEFAULTS.gainY);
+  const [halftonePaperMode, setHalftonePaperMode] = useState('cream');
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [exportFeedback, setExportFeedback] = useState(null);
   const [configExportOpen, setConfigExportOpen] = useState(false);
@@ -560,6 +571,38 @@ export default function AppV2({
     setHalftoneGainC(p.gainC ?? HALFTONE_DEFAULTS.gainC);
     setHalftoneGainY(p.gainY ?? HALFTONE_DEFAULTS.gainY);
     setHalftonePresetIndex(index);
+    setHalftonePaperMode(
+      halftonePaperModeFromValues(
+        p.colorBack ?? HALFTONE_DEFAULTS.colorBack,
+        p.floodC ?? HALFTONE_DEFAULTS.floodC,
+        p.gridNoise ?? HALFTONE_DEFAULTS.gridNoise,
+      ),
+    );
+  }, []);
+
+  const selectHalftonePaper = useCallback((mode) => {
+    if (mode !== 'cream' && mode !== 'white') return;
+    applyHalftonePaperPreset(mode, {
+      setHalftoneColorBack,
+      setHalftoneFloodC,
+      setHalftoneGridNoise,
+    });
+    setHalftonePaperMode(mode);
+  }, []);
+
+  const onHalftoneColorBackChange = useCallback((value) => {
+    setHalftoneColorBack(value);
+    setHalftonePaperMode('custom');
+  }, []);
+
+  const onHalftoneGridNoiseChange = useCallback((value) => {
+    setHalftoneGridNoise(value);
+    setHalftonePaperMode('custom');
+  }, []);
+
+  const onHalftoneFloodCChange = useCallback((value) => {
+    setHalftoneFloodC(value);
+    setHalftonePaperMode('custom');
   }, []);
 
   /** Visible capture target only — no fallback to an unmounted/offscreen canvas when halftone is on. */
@@ -763,6 +806,7 @@ export default function AppV2({
     halftoneFloodC,
     halftoneGainC,
     halftoneGainY,
+    halftonePaperMode,
     copyFormat,
     copyScale,
     stitchRevealDurationSec,
@@ -777,7 +821,7 @@ export default function AppV2({
     quantizeDither, patternIndex, rectRadius, rectAspect, rectRatio, patternFit, contentPadding, mosaicHalftoneOn,
     halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType,
     halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC,
-    halftoneGainC, halftoneGainY, copyFormat, copyScale, stitchRevealDurationSec, mediaTextureKind,
+    halftoneGainC, halftoneGainY, halftonePaperMode, copyFormat, copyScale, stitchRevealDurationSec, mediaTextureKind,
   ]);
 
   const mosaicSettersRef = useRef({});
@@ -1153,6 +1197,7 @@ export default function AppV2({
     setHalftoneFloodC(HALFTONE_DEFAULTS.floodC);
     setHalftoneGainC(HALFTONE_DEFAULTS.gainC);
     setHalftoneGainY(HALFTONE_DEFAULTS.gainY);
+    setHalftonePaperMode('cream');
     setImageSource((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return '';
@@ -1225,16 +1270,28 @@ export default function AppV2({
     }
     if (q.contentPadding != null) setContentPadding(q.contentPadding);
     if (q.mosaicHalftoneOn != null) setMosaicHalftoneOn(!!q.mosaicHalftoneOn);
+    if (q.halftonePaperMode === 'white') {
+      selectHalftonePaper('white');
+    }
     if (q.halftonePresetIndex != null) setHalftonePresetIndex(q.halftonePresetIndex);
     if (q.halftoneSize != null) setHalftoneSize(q.halftoneSize);
     if (q.halftoneSoftness != null) setHalftoneSoftness(q.halftoneSoftness);
-    if (q.halftoneGridNoise != null) setHalftoneGridNoise(q.halftoneGridNoise);
+    if (q.halftoneGridNoise != null) {
+      setHalftoneGridNoise(q.halftoneGridNoise);
+      setHalftonePaperMode('custom');
+    }
     if (q.halftoneContrast != null) setHalftoneContrast(q.halftoneContrast);
     if (q.halftoneType != null) setHalftoneType(q.halftoneType);
-    if (q.halftoneFloodC != null) setHalftoneFloodC(q.halftoneFloodC);
+    if (q.halftoneFloodC != null) {
+      setHalftoneFloodC(q.halftoneFloodC);
+      setHalftonePaperMode('custom');
+    }
     if (q.halftoneGainC != null) setHalftoneGainC(q.halftoneGainC);
     if (q.halftoneGainY != null) setHalftoneGainY(q.halftoneGainY);
-    if (q.halftoneColorBack != null) setHalftoneColorBack(q.halftoneColorBack);
+    if (q.halftoneColorBack != null) {
+      setHalftoneColorBack(q.halftoneColorBack);
+      setHalftonePaperMode('custom');
+    }
     if (q.halftoneColorC != null) setHalftoneColorC(q.halftoneColorC);
     if (q.halftoneColorM != null) setHalftoneColorM(q.halftoneColorM);
     if (q.halftoneColorY != null) setHalftoneColorY(q.halftoneColorY);
@@ -1250,6 +1307,7 @@ export default function AppV2({
         mosaicHalftoneOn,
         halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType,
         halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY,
+        halftonePaperMode,
         gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp,
         quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex,
         patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax,
@@ -1267,7 +1325,7 @@ export default function AppV2({
       }
     }, 400);
     return () => { clearTimeout(urlSyncTimeoutRef.current); };
-  }, [mosaicHalftoneOn, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex, patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit, contentPadding, stitchRevealMode, stitchRevealDurationSec, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, keyframeDurationSec, editingAfter, mosaicBefore, mosaicAfter]);
+  }, [mosaicHalftoneOn, halftonePresetIndex, halftoneSize, halftoneSoftness, halftoneGridNoise, halftoneContrast, halftoneType, halftoneColorBack, halftoneColorC, halftoneColorM, halftoneColorY, halftoneColorK, halftoneFloodC, halftoneGainC, halftoneGainY, halftonePaperMode, gridSize, palette, bgShade, bgColorMode, bgCustomColor, rectColorSource, tileArtLevels, tileArtThreshold, tileArtDither, tileArtColorMode, tileArtGeom, tileArtUniformGrid, tileArtDensity, tileArtRamp, quantizeSteps, quantizeMode, quantizeGamma, quantizeDither, patternIndex, patternWarpShade, patternWeftShade, lumaSizeMix, lumaSizeInvert, lumaSizeFloor, cellGeometryMode, stitchLumaMax, rectRadius, rectAspect, rectRatio, copyFormat, copyScale, menuHidden, mosaicBgGaps, patternFit, contentPadding, stitchRevealMode, stitchRevealDurationSec, stitchRevealSeed, stitchRevealScale, stitchRevealNoiseScale, stitchRevealSoftness, stitchRevealBleedAnisotropy, stitchRevealBleedRotation, stitchRevealBleedCrossFiber, stitchRevealBleedDraftCoupled, keyframeDurationSec, editingAfter, mosaicBefore, mosaicAfter]);
 
   /** Keyboard shortcuts: Mod+C copy, Mod+Shift+R / F5 reload (no presets in v2). */
   useEffect(() => {
@@ -1485,7 +1543,7 @@ export default function AppV2({
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label.Root className={typeLabel} htmlFor="mosaic-halftone-gridnoise">Grid noise</Label.Root>
-                  <SliderWithInput id="mosaic-halftone-gridnoise" aria-label="Grid noise" value={halftoneGridNoise} onValueChange={setHalftoneGridNoise} defaultValue={HALFTONE_DEFAULTS.gridNoise} onReset={() => setHalftoneGridNoise(HALFTONE_DEFAULTS.gridNoise)} min={0} max={1} step={0.05} format={(n) => n.toFixed(2)} />
+                  <SliderWithInput id="mosaic-halftone-gridnoise" aria-label="Grid noise" value={halftoneGridNoise} onValueChange={onHalftoneGridNoiseChange} defaultValue={HALFTONE_DEFAULTS.gridNoise} onReset={() => { setHalftoneGridNoise(HALFTONE_DEFAULTS.gridNoise); setHalftonePaperMode('custom'); }} min={0} max={1} step={0.05} format={(n) => n.toFixed(2)} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label.Root className={typeLabel}>Type</Label.Root>
@@ -1508,7 +1566,7 @@ export default function AppV2({
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label.Root className={typeLabel} htmlFor="mosaic-halftone-floodc">Flood C</Label.Root>
-                  <SliderWithInput id="mosaic-halftone-floodc" aria-label="Cyan flood" value={halftoneFloodC} onValueChange={setHalftoneFloodC} defaultValue={HALFTONE_DEFAULTS.floodC} onReset={() => setHalftoneFloodC(HALFTONE_DEFAULTS.floodC)} min={0} max={1} step={0.05} format={(n) => n.toFixed(2)} />
+                  <SliderWithInput id="mosaic-halftone-floodc" aria-label="Cyan flood" value={halftoneFloodC} onValueChange={onHalftoneFloodCChange} defaultValue={HALFTONE_DEFAULTS.floodC} onReset={() => { setHalftoneFloodC(HALFTONE_DEFAULTS.floodC); setHalftonePaperMode('custom'); }} min={0} max={1} step={0.05} format={(n) => n.toFixed(2)} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label.Root className={typeLabel} htmlFor="mosaic-halftone-gainc">Gain C</Label.Root>
@@ -1526,7 +1584,7 @@ export default function AppV2({
                   <IconButton
                     size="resetSm"
                     onClick={() => {
-                      setHalftoneColorBack(HALFTONE_DEFAULTS.colorBack);
+                      selectHalftonePaper('cream');
                       setHalftoneColorC(HALFTONE_DEFAULTS.colorC);
                       setHalftoneColorM(HALFTONE_DEFAULTS.colorM);
                       setHalftoneColorY(HALFTONE_DEFAULTS.colorY);
@@ -1538,9 +1596,32 @@ export default function AppV2({
                     <Icon name="restart_alt" className={iconResetGlyph} />
                   </IconButton>
                 </div>
+                <div className="mb-2 flex flex-col gap-1">
+                  <Label.Root className={typeLabel}>Paper</Label.Root>
+                  <SegmentedControl>
+                    <div className="flex h-full">
+                      <SegmentedControlButton
+                        active={halftonePaperMode === 'cream'}
+                        aria-pressed={halftonePaperMode === 'cream'}
+                        aria-label="Cream paper"
+                        onClick={() => selectHalftonePaper('cream')}
+                      >
+                        Cream
+                      </SegmentedControlButton>
+                      <SegmentedControlButton
+                        active={halftonePaperMode === 'white'}
+                        aria-pressed={halftonePaperMode === 'white'}
+                        aria-label="White paper without specks"
+                        onClick={() => selectHalftonePaper('white')}
+                      >
+                        White
+                      </SegmentedControlButton>
+                    </div>
+                  </SegmentedControl>
+                </div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { label: 'Back', value: halftoneColorBack, set: setHalftoneColorBack, default: HALFTONE_DEFAULTS.colorBack },
+                    { label: 'Back', value: halftoneColorBack, set: onHalftoneColorBackChange, default: HALFTONE_DEFAULTS.colorBack },
                     { label: 'C', value: halftoneColorC, set: setHalftoneColorC, default: HALFTONE_DEFAULTS.colorC },
                     { label: 'M', value: halftoneColorM, set: setHalftoneColorM, default: HALFTONE_DEFAULTS.colorM },
                     { label: 'Y', value: halftoneColorY, set: setHalftoneColorY, default: HALFTONE_DEFAULTS.colorY },

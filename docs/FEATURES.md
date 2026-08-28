@@ -127,6 +127,9 @@ There are no global shortcuts today for **randomize**, **reset**, **record**, **
 
 - **Halftone Off / On** in the Mosaic sidebar (like Weave); **On** uses **`ImageRectsHalftoneStage`** with the same CMYK controls (preset, dot/grid, tone, ink colors).
 - **`?v=4`** bookmarks still work (Mosaic + halftone on). Halftone tuning uses shared URL keys (`hp`, `hs`, `ht`, `hcols`, …).
+- **What:** Mosaic halftone preserves **transparency** from uploaded PNG/GIF alpha and from **Transparent** BG / **Background gaps** — copy, export, and record use the alpha-composited output. **Why:** cutouts and see-through gaps stay see-through when halftone is on instead of flattening to paper.
+- **What:** Halftone ink sidebar **Paper** control: **Cream** (default print stock) or **White (clean)** (`#ffffff`, flood/grid noise off — no cyan specks on highlights). URL **`hbp=1`** for white. Same on Weave halftone. **Why:** pure white export without flood ink on bright areas.
+- **What:** **Resolution** grid slider has denser snap stops (e.g. 20, 28, 40, 56 … between former coarse values). **Why:** finer tuning of rounded-rect cell density on Weave and Mosaic.
 - **What:** Fixed invalid GLSL `vec3` constructor in **`fragmentImageRects.glsl`** tile-art density dither (WebGL 1 / GLSL ES 1.00). **Why:** `vec3(cellID, gCol, gRow)` failed to compile and blocked all Image Rects views with a shader error on stage.
 
 ---
