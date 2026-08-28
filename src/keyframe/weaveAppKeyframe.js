@@ -6,6 +6,7 @@
  */
 
 import { PATTERNS } from '../patterns';
+import { applyHalftonePaperPreset } from '../halftonePaper';
 
 const WEAVE_CORE_KEYS = [
   'pattern', 'palette', 'bgShade', 'warpShade', 'weftShade', 'gridSize',
@@ -27,7 +28,7 @@ const WEAVE_CORE_KEYS = [
 const HALFTONE_KEYS = [
   'halftonePresetIndex', 'halftoneSize', 'halftoneSoftness', 'halftoneGridNoise', 'halftoneContrast', 'halftoneType',
   'halftoneColorBack', 'halftoneColorC', 'halftoneColorM', 'halftoneColorY', 'halftoneColorK',
-  'halftoneFloodC', 'halftoneGainC', 'halftoneGainY',
+  'halftoneFloodC', 'halftoneGainC', 'halftoneGainY', 'halftonePaperMode',
 ];
 
 const COMBO_KEYS = [
@@ -129,6 +130,10 @@ export function applyWeaveAppKeyframe(view, weaveHalftoneOn, setters, snap) {
   };
 
   const applyHalftone = () => {
+    if (snap.halftonePaperMode === 'white' || snap.halftonePaperMode === 'cream') {
+      applyHalftonePaperPreset(snap.halftonePaperMode, setters);
+      setters.setHalftonePaperMode?.(snap.halftonePaperMode);
+    }
     if (snap.halftonePresetIndex != null) setters.setHalftonePresetIndex?.(Math.round(clamp(Number(snap.halftonePresetIndex), 0, 99)));
     if (snap.halftoneSize != null) setters.setHalftoneSize?.(clamp(Number(snap.halftoneSize), 0.01, 1));
     if (snap.halftoneSoftness != null) setters.setHalftoneSoftness?.(clamp(Number(snap.halftoneSoftness), 0, 1));

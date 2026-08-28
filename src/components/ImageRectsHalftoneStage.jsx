@@ -2,16 +2,18 @@
  * ImageRectsHalftoneStage — Mosaic/Image rects → CMYK halftone (Print mode).
  * Offscreen capture at image resolution; HalftoneCmyk is sized to the same image-aspect
  * viewport box as ImageRectsCanvas (Fit/Fill + rect inset padding baked into capture).
+ * Output is alpha-composited with the mosaic capture so PNG/transparent BG survive halftone.
  */
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { HalftoneCmyk } from '@paper-design/shaders-react';
 import { ImageRectsCapture } from './ImageRectsCapture';
 import { useAspectViewportBox } from '../hooks/useAspectViewportBox';
+import { compositeHalftoneWithAlphaMask } from '../halftoneAlphaComposite';
 import { WEAVING_URL_DEFAULTS } from '../urlDefaults';
 
 const CAPTURE_AFTER_MEDIA_MS = 80;
 const CAPTURE_MAX_ATTEMPTS = 180;
-const WEB_GL_ATTRS = { preserveDrawingBuffer: true };
+const WEB_GL_ATTRS = { preserveDrawingBuffer: true, alpha: true };
 const CAPTURE_DPR = 2;
 
 function isCaptureReady(canvas, layoutW, layoutH) {
@@ -117,6 +119,8 @@ export function ImageRectsHalftoneStage({
   halftoneCanvasRef,
 }) {
   const canvasRef = useRef(null);
+  const halftoneSourceCanvasRef = useRef(null);
+  const outputCanvasRef = useRef(null);
   const pendingCaptureSizeRef = useRef({ w: 1280, h: 720 });
   const captureSizeRef = useRef({ w: 1280, h: 720 });
   const mediaReadyRef = useRef(false);
@@ -127,6 +131,7 @@ export function ImageRectsHalftoneStage({
   const [capturedDataUrl, setCapturedDataUrl] = useState('');
 
   const viewportMode = patternFit === 'fill' ? 'cover' : 'contain';
+  const halftoneFit = viewportMode;
   const aspectRatio =
     imageSize && imageSize.width > 0 && imageSize.height > 0
       ? imageSize.width / imageSize.height
@@ -190,6 +195,11 @@ export function ImageRectsHalftoneStage({
     if (el && imageSource && mediaReadyRef.current) scheduleCapture();
   }, [imageSource, scheduleCapture]);
 
+  const handleOutputCanvasRef = useCallback((el) => {
+    outputCanvasRef.current = el;
+    if (halftoneCanvasRef) halftoneCanvasRef.current = el;
+  }, [halftoneCanvasRef]);
+
   useEffect(() => {
     mediaReadyRef.current = false;
     setCapturedDataUrl('');
@@ -248,17 +258,18 @@ export function ImageRectsHalftoneStage({
     scheduleCapture,
   ]);
 
+  // Locate Paper halftone source canvas (hidden layer).
   useEffect(() => {
-    if (!capturedDataUrl || !halftoneContainerRef?.current || !halftoneCanvasRef) return;
+    if (!capturedDataUrl || !halftoneContainerRef?.current) return;
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 120;
     const findCanvas = () => {
       if (cancelled || attempts++ >= maxAttempts) return;
       const el = halftoneContainerRef.current;
-      const canvas = el?.querySelector?.('canvas');
+      const canvas = el?.querySelector?.('[data-halftone-source] canvas');
       if (canvas && canvas.width > 0 && canvas.height > 0) {
-        halftoneCanvasRef.current = canvas;
+        halftoneSourceCanvasRef.current = canvas;
         return;
       }
       requestAnimationFrame(findCanvas);
@@ -266,9 +277,39 @@ export function ImageRectsHalftoneStage({
     findCanvas();
     return () => {
       cancelled = true;
+      halftoneSourceCanvasRef.current = null;
+    };
+  }, [capturedDataUrl, halftoneContainerRef, halftoneW, halftoneH]);
+
+  // rAF: composite halftone + mosaic alpha mask → visible output canvas.
+  useEffect(() => {
+    if (!capturedDataUrl || halftoneW < 1 || halftoneH < 1) return undefined;
+    let rafId = 0;
+    const tick = () => {
+      const halftoneCanvas = halftoneSourceCanvasRef.current;
+      const maskCanvas = canvasRef.current;
+      const outputCanvas = outputCanvasRef.current;
+      if (halftoneCanvas && maskCanvas && outputCanvas) {
+        compositeHalftoneWithAlphaMask(
+          outputCanvas,
+          halftoneCanvas,
+          maskCanvas,
+          halftoneW,
+          halftoneH,
+          halftoneFit,
+        );
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [capturedDataUrl, halftoneW, halftoneH, halftoneFit]);
+
+  useEffect(() => {
+    return () => {
       if (halftoneCanvasRef) halftoneCanvasRef.current = null;
     };
-  }, [capturedDataUrl, halftoneContainerRef, halftoneCanvasRef]);
+  }, [halftoneCanvasRef]);
 
   const captureProps = {
     imageSource,
@@ -357,38 +398,53 @@ export function ImageRectsHalftoneStage({
 
       <div
         ref={halftoneContainerRef}
-        className="relative flex shrink-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface-secondary"
+        className="relative flex shrink-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-transparent"
         style={{ width: boxW, height: boxH }}
       >
         {capturedDataUrl && boxW > 0 && boxH > 0 ? (
-          <HalftoneCmyk
-            width={halftoneW}
-            height={halftoneH}
-            image={capturedDataUrl}
-            colorBack={colorBack}
-            colorC={colorC}
-            colorM={colorM}
-            colorY={colorY}
-            colorK={colorK}
-            size={size}
-            gridNoise={gridNoise}
-            type={type}
-            softness={softness}
-            contrast={contrast}
-            floodC={floodC}
-            floodM={0}
-            floodY={0}
-            floodK={0}
-            gainC={gainC}
-            gainM={0}
-            gainY={gainY}
-            gainK={0}
-            grainMixer={0}
-            grainOverlay={0}
-            grainSize={0.5}
-            fit="cover"
-            webGlContextAttributes={WEB_GL_ATTRS}
-          />
+          <>
+            <canvas
+              ref={handleOutputCanvasRef}
+              className="relative z-10 block size-full"
+              width={halftoneW}
+              height={halftoneH}
+              style={{ width: boxW, height: boxH }}
+            />
+            <div
+              data-halftone-source
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-0"
+            >
+              <HalftoneCmyk
+                width={halftoneW}
+                height={halftoneH}
+                image={capturedDataUrl}
+                colorBack={colorBack}
+                colorC={colorC}
+                colorM={colorM}
+                colorY={colorY}
+                colorK={colorK}
+                size={size}
+                gridNoise={gridNoise}
+                type={type}
+                softness={softness}
+                contrast={contrast}
+                floodC={floodC}
+                floodM={0}
+                floodY={0}
+                floodK={0}
+                gainC={gainC}
+                gainM={0}
+                gainY={gainY}
+                gainK={0}
+                grainMixer={0}
+                grainOverlay={0}
+                grainSize={0.5}
+                fit={halftoneFit}
+                webGlContextAttributes={WEB_GL_ATTRS}
+              />
+            </div>
+          </>
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-text-muted">
             {captureError ? (
